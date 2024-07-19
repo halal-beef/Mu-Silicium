@@ -31,3 +31,4 @@
 [LibraryClasses]
   IoLib
   DebugLib
+  BaseLib
