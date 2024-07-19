@@ -8,7 +8,26 @@
 
 [Sources]
   DevicePrePiLib.c
+  fdt.c
+  fdt_addresses.c
+  fdt_check.c
+  fdt_empty_tree.c
+  fdt_overlay.c
+  fdt_ro.c
+  fdt_rw.c
+  fdt_strerror.c
+  fdt_sw.c
+  fdt_strfuncs.c
+  fdt_wip.c
+  fdt.h
+  libfdt.h
+  libfdt_env.h
+  libfdt_internal.h
 
 [Packages]
   MdePkg/MdePkg.dec
   SiliciumPkg/SiliciumPkg.dec
+
+[LibraryClasses]
+  IoLib
+  DebugLib
