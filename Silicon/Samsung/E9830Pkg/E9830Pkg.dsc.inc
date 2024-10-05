@@ -65,5 +65,6 @@
 
 [Components]
   E9830Pkg/Drivers/SmBiosTableDxe/SmBiosTableDxe.inf
+  E9830Pkg/Drivers/UFSDxe/UFSDxe.inf
 
 !include SamsungPkg/SamsungPkg.dsc.inc

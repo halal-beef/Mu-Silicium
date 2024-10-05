@@ -94,6 +94,8 @@ READ_LOCK_STATUS   = TRUE
   INF MdeModulePkg/Universal/Acpi/AcpiPlatformDxe/AcpiPlatformDxe.inf
   INF E9830Pkg/Drivers/SmBiosTableDxe/SmBiosTableDxe.inf
 
+  INF E9830Pkg/Drivers/UFSDxe/UFSDxe.inf
+
   # ACPI Tables
   !include Include/ACPI.inc
 

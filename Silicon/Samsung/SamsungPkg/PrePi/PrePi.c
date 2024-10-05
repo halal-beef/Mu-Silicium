@@ -287,6 +287,9 @@ PlatformInit:
   DEBUG ((EFI_D_WARN, "Firmware Version %s Build at %a on %a\n", PcdGetPtr (PcdFirmwareVersionString), __TIME__, __DATE__));
   DEBUG ((EFI_D_WARN, "\n"));
 
+  DEBUG((EFI_D_WARN, "\n\n\n\n\n"));
+  DEBUG((EFI_D_WARN, "UFS VERSION: 0x%x\n", MmioRead32(0x13100000 + 0x08)));
+
   if (PerformanceMeasurementEnabled ()) {
     // Init Timer HW Controller
     TimerConstructor ();
