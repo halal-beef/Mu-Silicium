@@ -252,20 +252,20 @@ SerialPortInitialize ()
   FrameBufferData.MemoryRegion.Length = FrameBufferData.Width * FrameBufferData.Height * FrameBufferData.BytesPerPixel;
 
   // Calculate Font Scales
-  UINT8 ScaleX = FrameBufferData.Width / 480;
-  UINT8 ScaleY = FrameBufferData.Height / 768;
+//  UINT8 ScaleX = FrameBufferData.Width / 480;
+//  UINT8 ScaleY = FrameBufferData.Height / 768;
 
   // Set Font Scale
-  if (ScaleX == ScaleY) {
-    FrameBufferData.FontScale = FrameBufferData.Width / 768;
-  } else {
-    FrameBufferData.FontScale = (ScaleX < ScaleY) ? ScaleX : ScaleY;
-  }
+//  if (ScaleX == ScaleY) {
+//    FrameBufferData.FontScale = FrameBufferData.Width / 768;
+//  } else {
+//    FrameBufferData.FontScale = (ScaleX < ScaleY) ? ScaleX : ScaleY;
+ // }
 
   // Verify Font Scale
-  if (!FrameBufferData.FontScale) {
-    FrameBufferData.FontScale = 1;
-  }
+  //if (!FrameBufferData.FontScale) {
+    FrameBufferData.FontScale = 2;
+ // }
 
   // Set Total Position
   FrameBufferData.CurrentPosition = (EFI_FRAME_BUFFER_POSITION *)(FrameBufferData.MemoryRegion.Address + FrameBufferData.MemoryRegion.Length);

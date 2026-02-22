@@ -37,5 +37,6 @@
   SamsungPkg/Drivers/DdrInfoDxe/DdrInfoDxe.inf
   SamsungPkg/Drivers/GpioDxe/GpioDxe.inf
   SamsungPkg/Drivers/SpeedyDxe/SpeedyDxe.inf
+  SamsungPkg/Drivers/ExynosUfs9830Dxe/ExynosUfs9830Dxe.inf
 
 !include SiliciumPkg/SiliciumPkg.dsc.inc
