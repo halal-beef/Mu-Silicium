@@ -318,7 +318,7 @@ static ufs_cal_errno ufs_cal_wait_pll_lock (void *hba, u32 addr, u32 mask)
       return UFS_CAL_NO_ERROR;
     ufs_lld_udelay (1);
   }
-  DEBUG ((DEBUG_ERROR, "UFS CAL: PLL lock timeout\n"));
+  DEBUG ((DEBUG_INFO, "UFS CAL: PLL lock timeout\n"));
   return UFS_CAL_ERROR;
 }
 
@@ -330,7 +330,7 @@ static ufs_cal_errno ufs_cal_wait_cdr_lock (void *hba, u32 addr, u32 mask, int l
       return UFS_CAL_NO_ERROR;
     ufs_lld_udelay (1);
   }
-  DEBUG ((DEBUG_ERROR, "UFS CAL: CDR lock timeout lane %d\n", lane));
+  DEBUG ((DEBUG_INFO, "UFS CAL: CDR lock timeout lane %d\n", lane));
   return UFS_CAL_ERROR;
 }
 
@@ -358,7 +358,7 @@ static ufs_cal_errno ufs30_cal_done_wait (void *hba, u32 addr, u32 mask, int lan
       return UFS_CAL_NO_ERROR;
     ufs_lld_udelay (1);
   }
-  DEBUG ((DEBUG_ERROR, "UFS CAL: EMB CAL timeout lane %d\n", lane));
+  DEBUG ((DEBUG_INFO, "UFS CAL: EMB CAL timeout lane %d\n", lane));
   return UFS_CAL_ERROR;
 }
 

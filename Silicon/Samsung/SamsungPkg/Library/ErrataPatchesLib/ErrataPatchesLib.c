@@ -12,7 +12,13 @@ UINT8*
 GetPlatformTransferToKernelShellCode (OUT UINTN *ShellCodeSize)
 {
   // Pass Dummy Size
-  *ShellCodeSize = 0;
+  *ShellCodeSize = 1;
 
-  return NULL;
+STATIC
+UINT8
+TransferToKernelShellCode[] = {
+0x80
+};
+
+  return TransferToKernelShellCode;
 }

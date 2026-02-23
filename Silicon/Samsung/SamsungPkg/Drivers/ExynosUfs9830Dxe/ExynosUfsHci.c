@@ -139,7 +139,7 @@ static EFI_STATUS UfsBoardInit (struct ufs_host *Ufs)
   UINT32 rst_stat = readl (EXYNOS9830_POWER_RST_STAT);
   UINT32 dfd_en   = readl (EXYNOS9830_POWER_RESET_SEQUENCER_CONFIGURATION);
 
-  DEBUG ((DEBUG_ERROR, "UFS: Board init\n"));
+  DEBUG ((DEBUG_INFO, "UFS: Board init\n"));
 
   /* MMIO regions */
   Ufs->ioaddr      = (VOID *)(UINTN)UFS_BASE_ADDR;
@@ -203,7 +203,7 @@ static int UfsHandleUicInt (struct ufs_host *Ufs, u32 stat)
   }
 
   if ((stat & UIC_ERROR) && (cmd->uiccmdr != UIC_CMD_DME_LINK_STARTUP)) {
-    DEBUG ((DEBUG_ERROR, "UFS: UIC ERROR 0x%08x\n", stat));
+    DEBUG ((DEBUG_INFO, "UFS: UIC ERROR 0x%08x\n", stat));
     ret = UFS_ERROR;
   }
   return ret;
@@ -226,7 +226,7 @@ static int UfsHandleInt (struct ufs_host *Ufs, int IsUic)
   ret = IsUic ? UfsHandleUicInt (Ufs, stat) : UfsHandleUtpInt (Ufs, stat);
 
   if (stat & INT_FATAL_ERRORS) {
-    DEBUG ((DEBUG_ERROR, "UFS: FATAL ERROR 0x%08x\n", stat));
+    DEBUG ((DEBUG_INFO, "UFS: FATAL ERROR 0x%08x\n", stat));
     ret = UFS_ERROR;
   }
 
@@ -235,7 +235,7 @@ static int UfsHandleInt (struct ufs_host *Ufs, int IsUic)
       u_delay (1);
     else {
       ret = UFS_TIMEOUT;
-      DEBUG ((DEBUG_ERROR, "UFS: TIMEOUT\n"));
+      DEBUG ((DEBUG_INFO, "UFS: TIMEOUT\n"));
     }
   }
 
@@ -276,10 +276,10 @@ static EFI_STATUS UfsInitCal (struct ufs_host *Ufs, int idx)
   Ufs->cal_param->host     = Ufs;
   Ufs->cal_param->board    = BRD_UNIV;
   Ufs->cal_param->evt_ver  = (readl (0x10000010UL) >> 20) & 0xf;
-  DEBUG ((DEBUG_ERROR, "UFS: EVT version %d\n", Ufs->cal_param->evt_ver));
+  DEBUG ((DEBUG_INFO, "UFS: EVT version %d\n", Ufs->cal_param->evt_ver));
 
   if (ufs_cal_init (Ufs->cal_param, idx) != UFS_CAL_NO_ERROR) {
-    DEBUG ((DEBUG_ERROR, "UFS: ufs_cal_init failed\n"));
+    DEBUG ((DEBUG_INFO, "UFS: ufs_cal_init failed\n"));
     return EFI_DEVICE_ERROR;
   }
   return EFI_SUCCESS;
@@ -537,7 +537,7 @@ static int UfsUtpCheckResult (struct ufs_host *Ufs)
     Ufs->scsi_cmd->status = hdr->status;
 
   if (utrd->dw[2] != OCS_SUCCESS) {
-    DEBUG ((DEBUG_ERROR, "UFS: OCS=0x%02x response=0x%02x type=0x%02x\n",
+    DEBUG ((DEBUG_INFO, "UFS: OCS=0x%02x response=0x%02x type=0x%02x\n",
             utrd->dw[2], hdr->response, hdr->type));
     return (hdr->response != 0) ? -1 : 0;
   }
@@ -581,7 +581,7 @@ static void UfsQueryReadInfo (struct ufs_host *Ufs, u8 idn)
   switch (idn) {
   case UPIU_DESC_ID_UNIT:
     if (data[2] >= 8) {
-      DEBUG ((DEBUG_ERROR, "UFS: unit desc response INDEX %d out of range\n", data[2]));
+      DEBUG ((DEBUG_INFO, "UFS: unit desc response INDEX %d out of range\n", data[2]));
       return;
     }
     dst = &Ufs->unit_desc[data[2]];
@@ -789,7 +789,7 @@ static int UfsUpdateMaxGear (struct ufs_host *Ufs)
   if (UfsSendUicCmd (Ufs)) return -1;
   Ufs->cal_param->max_gear = (u8)MIN (cmd.uiccmdarg3, (u32)Ufs->gear_mode);
   if (Ufs->cal_param->max_gear == 0) Ufs->cal_param->max_gear = GEAR_4;
-  DEBUG ((DEBUG_ERROR, "UFS: max_gear=%d\n", Ufs->cal_param->max_gear));
+  DEBUG ((DEBUG_INFO, "UFS: max_gear=%d\n", Ufs->cal_param->max_gear));
   return 0;
 }
 
@@ -808,7 +808,7 @@ static int UfsUpdateActiveLane (struct ufs_host *Ufs)
   if (UfsSendUicCmd (Ufs)) return -1;
   Ufs->cal_param->active_rx_lane = (u8)rx.uiccmdarg3;
 
-  DEBUG ((DEBUG_ERROR, "UFS: active TX=%d RX=%d\n",
+  DEBUG ((DEBUG_INFO, "UFS: active TX=%d RX=%d\n",
           Ufs->cal_param->active_tx_lane, Ufs->cal_param->active_rx_lane));
   return 0;
 }
@@ -833,7 +833,7 @@ static int UfsCheck2Lane (struct ufs_host *Ufs)
 
   Ufs->cal_param->connected_tx_lane = (u8)tx;
   Ufs->cal_param->connected_rx_lane = (u8)rx;
-  DEBUG ((DEBUG_ERROR, "UFS: connected TX=%d RX=%d\n", tx, rx));
+  DEBUG ((DEBUG_INFO, "UFS: connected TX=%d RX=%d\n", tx, rx));
 
   /* DME_SET PA_ActiveTxDataLanes / PA_ActiveRxDataLanes */
   tx_set.uiccmdr    = UIC_CMD_DME_SET;
@@ -873,7 +873,7 @@ static int UfsEndBootMode (struct ufs_host *Ufs)
     if (!res) break;
   }
   if (res) {
-    DEBUG ((DEBUG_ERROR, "UFS: NOP OUT failed\n"));
+    DEBUG ((DEBUG_INFO, "UFS: NOP OUT failed\n"));
     return res;
   }
 
@@ -891,7 +891,7 @@ static int UfsEndBootMode (struct ufs_host *Ufs)
     mdelay (1);
   } while (retry-- > 0);
 
-  if (flag) { DEBUG ((DEBUG_ERROR, "UFS: fDeviceInit timeout\n")); return -1; }
+  if (flag) { DEBUG ((DEBUG_INFO, "UFS: fDeviceInit timeout\n")); return -1; }
   return 0;
 }
 
@@ -937,7 +937,7 @@ static EFI_STATUS UfsPmcCommon (struct ufs_host *Ufs, struct uic_pwr_mode *pmd)
 
   reg = readl ((u8 *)Ufs->ioaddr + REG_CONTROLLER_STATUS);
   if (UPMCRS (reg) != PWR_LOCAL) {
-    DEBUG ((DEBUG_ERROR, "UFS: Gear change failed, UPMCRS=0x%x\n", UPMCRS (reg)));
+    DEBUG ((DEBUG_INFO, "UFS: Gear change failed, UPMCRS=0x%x\n", UPMCRS (reg)));
     return EFI_DEVICE_ERROR;
   }
   return EFI_SUCCESS;
@@ -969,10 +969,10 @@ EFI_STATUS UfsInitInterface (struct ufs_host *Ufs)
   /* 4. Link startup */
   Ufs->uic_cmd = &link_cmd;
   if (UfsSendUicCmd (Ufs)) {
-    DEBUG ((DEBUG_ERROR, "UFS: Link startup failed\n"));
+    DEBUG ((DEBUG_INFO, "UFS: Link startup failed\n"));
     return EFI_DEVICE_ERROR;
   }
-  DEBUG ((DEBUG_ERROR, "UFS: Link established\n"));
+  DEBUG ((DEBUG_INFO, "UFS: Link established\n"));
 
   /* 5. Update max gear */
   if (UfsUpdateMaxGear (Ufs)) return EFI_DEVICE_ERROR;
@@ -989,11 +989,11 @@ EFI_STATUS UfsInitInterface (struct ufs_host *Ufs)
 
   /* 9. NOP + fDeviceInit */
   if (UfsEndBootMode (Ufs)) return EFI_DEVICE_ERROR;
-  DEBUG ((DEBUG_ERROR, "UFS: Device initialized\n"));
+  DEBUG ((DEBUG_INFO, "UFS: Device initialized\n"));
 
   /* 10. Check connected lane count, DME_SET active lanes, set pmd->lane */
   if (UfsCheck2Lane (Ufs)) {
-    DEBUG ((DEBUG_ERROR, "UFS: 2-lane check failed\n"));
+    DEBUG ((DEBUG_INFO, "UFS: 2-lane check failed\n"));
     return EFI_DEVICE_ERROR;
   }
 
@@ -1024,7 +1024,7 @@ EFI_STATUS UfsInitInterface (struct ufs_host *Ufs)
   Status = UfsPostGearChange (Ufs);
   if (EFI_ERROR (Status)) return Status;
 
-  DEBUG ((DEBUG_ERROR, "UFS: Power mode G%d M%d L%d Series%d\n",
+  DEBUG ((DEBUG_INFO, "UFS: Power mode G%d M%d L%d Series%d\n",
           pmd->gear, pmd->mode, pmd->lane, pmd->hs_series));
 
   return EFI_SUCCESS;
@@ -1126,7 +1126,7 @@ EFI_STATUS UfsReadCapacity (struct ufs_host *Ufs, u32 Lun, u64 *BlkCnt, u32 *Blk
   *BlkSize = ((u32)Buf[4] << 24) | ((u32)Buf[5] << 16) |
              ((u32)Buf[6] << 8)  |  (u32)Buf[7];
 
-  DEBUG ((DEBUG_ERROR, "UFS: LUN%d: %Lu blocks * %u bytes\n", Lun, *BlkCnt, *BlkSize));
+  DEBUG ((DEBUG_INFO, "UFS: LUN%d: %Lu blocks * %u bytes\n", Lun, *BlkCnt, *BlkSize));
   FreeAlignedPages (Buf, 1);
   Status = EFI_SUCCESS;
   return Status;

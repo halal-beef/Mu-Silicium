@@ -116,7 +116,7 @@ ExynosUfsReadBlocks (
     Cmd.lun     = Dev->Lun;
 
     if (UfsUtpCmdProcess (Dev->Ufs, &Cmd)) {
-      DEBUG ((DEBUG_ERROR, "UFS: ReadBlocks LUN%u LBA=%Lu cnt=%Lu FAILED\n",
+      DEBUG ((DEBUG_INFO, "UFS: ReadBlocks LUN%u LBA=%Lu cnt=%Lu FAILED\n",
               Dev->Lun, CurLba, (UINT64)ThisBlkCnt));
       return EFI_DEVICE_ERROR;
     }
@@ -177,7 +177,7 @@ ExynosUfsWriteBlocks (
     Cmd.lun     = Dev->Lun;
 
     if (UfsUtpCmdProcess (Dev->Ufs, &Cmd)) {
-      DEBUG ((DEBUG_ERROR, "UFS: WriteBlocks LUN%u LBA=%Lu cnt=%Lu FAILED\n",
+      DEBUG ((DEBUG_INFO, "UFS: WriteBlocks LUN%u LBA=%Lu cnt=%Lu FAILED\n",
               Dev->Lun, CurLba, (UINT64)ThisBlkCnt));
       return EFI_DEVICE_ERROR;
     }
@@ -332,7 +332,7 @@ InstallLun (
     BlkSize = 4096;
   }
 
-  DEBUG ((DEBUG_ERROR, "UFS: LUN %d: %Lu blocks of %u bytes\n", Lun, BlkCnt, BlkSize));
+  DEBUG ((DEBUG_INFO, "UFS: LUN %d: %Lu blocks of %u bytes\n", Lun, BlkCnt, BlkSize));
 
   Dev = AllocateZeroPool (sizeof (EXYNOS_UFS_DEV));
   if (!Dev) return EFI_OUT_OF_RESOURCES;
@@ -369,7 +369,7 @@ InstallLun (
                   &gEfiDevicePathProtocolGuid, Dp,
                   NULL);
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "UFS: InstallProtocol LUN %d failed: %r\n", Lun, Status));
+    DEBUG ((DEBUG_INFO, "UFS: InstallProtocol LUN %d failed: %r\n", Lun, Status));
     FreePool (Dev);
     FreePool (Dp);
     return Status;
@@ -394,17 +394,17 @@ ExynosUfs9830DxeEntry (
   EFI_EVENT        Event;
   VOID            *Registration;
 
-  DEBUG ((DEBUG_ERROR, "Exynos UFS 9830 Driver starting\n"));
+  DEBUG ((DEBUG_INFO, "Exynos UFS 9830 Driver starting\n"));
 
   Ufs = UfsAllocHost ();
   if (!Ufs) {
-    DEBUG ((DEBUG_ERROR, "UFS: Failed to allocate host\n"));
+    DEBUG ((DEBUG_INFO, "UFS: Failed to allocate host\n"));
     return EFI_OUT_OF_RESOURCES;
   }
 
   Status = UfsInitHost (Ufs);
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "UFS: Host init failed: %r\n", Status));
+    DEBUG ((DEBUG_INFO, "UFS: Host init failed: %r\n", Status));
     return Status;
   }
 
@@ -415,12 +415,12 @@ ExynosUfs9830DxeEntry (
   }
 
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "UFS: Interface init failed after retries: %r\n", Status));
+    DEBUG ((DEBUG_INFO, "UFS: Interface init failed after retries: %r\n", Status));
     return Status;
   }
 
   if (!UfsUtpQueryRetry (Ufs, ATTR_R_BOOTLUNEN, 0)) {
-    DEBUG ((DEBUG_ERROR, "UFS: bBootLunEn=0x%x\n",
+    DEBUG ((DEBUG_INFO, "UFS: bBootLunEn=0x%x\n",
             Ufs->attributes.arry[UPIU_ATTR_ID_BOOTLUNEN]));
   }
 
@@ -438,7 +438,7 @@ ExynosUfs9830DxeEntry (
     return EFI_NOT_FOUND;
   }
 
-  DEBUG ((DEBUG_ERROR, "UFS: Installed %u LUN(s) as BlockIO\n", FoundLuns));
+  DEBUG ((DEBUG_INFO, "UFS: Installed %u LUN(s) as BlockIO\n", FoundLuns));
 
   /*
    * Attempt an immediate connect pass.  If DiskIoDxe and PartitionDxe were

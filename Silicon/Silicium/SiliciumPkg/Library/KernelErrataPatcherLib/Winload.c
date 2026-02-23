@@ -78,7 +78,7 @@ PatchOsLoaderArm64TransferToKernel (
       }
 
       // Print Windows Semester
-      DEBUG ((EFI_D_WARN, "%a: Detected Windows Semester: %a\n", __FUNCTION__, WinSemesterData[i].Name));
+      DEBUG ((EFI_D_ERROR, "%a: Detected Windows Semester: %a\n", __FUNCTION__, WinSemesterData[i].Name));
 
       // Inject Jump Instruction
       *(UINT32 *)Current = ARM64_BRANCH_LOCATION_INSTRUCTION (Current, NewTransferToKernelAddr);
