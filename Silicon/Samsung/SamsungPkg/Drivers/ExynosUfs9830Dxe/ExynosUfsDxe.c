@@ -49,6 +49,23 @@ ExynosUfsReset (
   return EFI_SUCCESS;
 }
 
+/*
+ * Maximum number of PRDT entries per UTP command.
+ *
+ * The PRDT region of the command descriptor starts at offset 0x800 and each
+ * entry is 16 bytes.  The cmd_desc allocation must be large enough to hold
+ * all entries; 128 entries x 16 bytes = 2 KB which fits safely in a typical
+ * 4 KB cmd_desc page.  Each entry covers one 4 KB page, so 128 entries gives
+ * a maximum of 512 KB per UTP command.
+ *
+ * Windows winload reads boot.wim in large (often > 512 KB) chunks.  Without
+ * chunking the PRDT loop in UfsUtpCmdProcess would write past the end of the
+ * cmd_desc buffer and fault.  We split every caller-supplied buffer into
+ * UFS_MAX_XFER_BYTES slices and issue one UTP command per slice.
+ */
+#define UFS_MAX_PRDT_ENTRIES  128U
+#define UFS_MAX_XFER_BYTES    (UFS_MAX_PRDT_ENTRIES * SIZE_4KB)   /* 512 KB */
+
 STATIC EFI_STATUS EFIAPI
 ExynosUfsReadBlocks (
   IN  EFI_BLOCK_IO_PROTOCOL *This,
@@ -58,33 +75,58 @@ ExynosUfsReadBlocks (
   OUT VOID                  *Buffer)
 {
   EXYNOS_UFS_DEV *Dev = EXYNOS_UFS_FROM_BLOCKIO (This);
-  UINTN           BlkSize, BlkCnt;
+  UINTN           BlkSize;
+  UINTN           MaxBytes;
+  UINTN           ThisBytes;
+  UINTN           ThisBlkCnt;
+  EFI_LBA         CurLba;
+  UINT8          *CurBuf;
   UFS_SCSI_CMD    Cmd;
 
-  if (!Buffer) return EFI_INVALID_PARAMETER;
-  if (MediaId != Dev->Media.MediaId) return EFI_MEDIA_CHANGED;
-  if (BufferSize == 0) return EFI_SUCCESS;
+  if (!Buffer)                        return EFI_INVALID_PARAMETER;
+  if (MediaId != Dev->Media.MediaId)  return EFI_MEDIA_CHANGED;
+  if (BufferSize == 0)                return EFI_SUCCESS;
 
   BlkSize = Dev->Media.BlockSize;
-  if (BufferSize % BlkSize) return EFI_BAD_BUFFER_SIZE;
-  BlkCnt = BufferSize / BlkSize;
+  if (BufferSize % BlkSize)          return EFI_BAD_BUFFER_SIZE;
 
-  DEBUG ((DEBUG_VERBOSE, "UFS: ReadBlocks LUN%u LBA=%Lu cnt=%Lu\n",
-          Dev->Lun, Lba, (UINT64)BlkCnt));
+  /* Round MaxBytes down to a whole number of blocks */
+  MaxBytes = (UFS_MAX_XFER_BYTES / BlkSize) * BlkSize;
 
-  ZeroMem (&Cmd, sizeof (Cmd));
-  Cmd.cdb[0] = SCSI_OP_READ_10;
-  Cmd.cdb[2] = (u8)((Lba >> 24) & 0xFF);
-  Cmd.cdb[3] = (u8)((Lba >> 16) & 0xFF);
-  Cmd.cdb[4] = (u8)((Lba >>  8) & 0xFF);
-  Cmd.cdb[5] = (u8)( Lba        & 0xFF);
-  Cmd.cdb[7] = (u8)((BlkCnt >>  8) & 0xFF);
-  Cmd.cdb[8] = (u8)( BlkCnt        & 0xFF);
-  Cmd.buf     = Buffer;
-  Cmd.datalen = (UINT32)BufferSize;
-  Cmd.lun     = Dev->Lun;
+  CurLba = Lba;
+  CurBuf = (UINT8 *)Buffer;
 
-  return UfsUtpCmdProcess (Dev->Ufs, &Cmd) ? EFI_DEVICE_ERROR : EFI_SUCCESS;
+  DEBUG ((DEBUG_VERBOSE, "UFS: ReadBlocks LUN%u LBA=%Lu total=%Lu\n",
+          Dev->Lun, Lba, (UINT64)(BufferSize / BlkSize)));
+
+  while (BufferSize > 0) {
+    ThisBytes  = MIN (BufferSize, MaxBytes);
+    ThisBlkCnt = ThisBytes / BlkSize;
+
+    ZeroMem (&Cmd, sizeof (Cmd));
+    Cmd.cdb[0] = SCSI_OP_READ_10;
+    Cmd.cdb[2] = (u8)((CurLba >> 24) & 0xFF);
+    Cmd.cdb[3] = (u8)((CurLba >> 16) & 0xFF);
+    Cmd.cdb[4] = (u8)((CurLba >>  8) & 0xFF);
+    Cmd.cdb[5] = (u8)( CurLba        & 0xFF);
+    Cmd.cdb[7] = (u8)((ThisBlkCnt >>  8) & 0xFF);
+    Cmd.cdb[8] = (u8)( ThisBlkCnt        & 0xFF);
+    Cmd.buf     = CurBuf;
+    Cmd.datalen = (UINT32)ThisBytes;
+    Cmd.lun     = Dev->Lun;
+
+    if (UfsUtpCmdProcess (Dev->Ufs, &Cmd)) {
+      DEBUG ((DEBUG_ERROR, "UFS: ReadBlocks LUN%u LBA=%Lu cnt=%Lu FAILED\n",
+              Dev->Lun, CurLba, (UINT64)ThisBlkCnt));
+      return EFI_DEVICE_ERROR;
+    }
+
+    BufferSize -= ThisBytes;
+    CurBuf     += ThisBytes;
+    CurLba     += (EFI_LBA)ThisBlkCnt;
+  }
+
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS EFIAPI
@@ -96,31 +138,56 @@ ExynosUfsWriteBlocks (
   IN VOID                  *Buffer)
 {
   EXYNOS_UFS_DEV *Dev = EXYNOS_UFS_FROM_BLOCKIO (This);
-  UINTN           BlkSize, BlkCnt;
+  UINTN           BlkSize;
+  UINTN           MaxBytes;
+  UINTN           ThisBytes;
+  UINTN           ThisBlkCnt;
+  EFI_LBA         CurLba;
+  UINT8          *CurBuf;
   UFS_SCSI_CMD    Cmd;
 
-  if (!Buffer) return EFI_INVALID_PARAMETER;
-  if (MediaId != Dev->Media.MediaId) return EFI_MEDIA_CHANGED;
-  if (Dev->Media.ReadOnly) return EFI_WRITE_PROTECTED;
-  if (BufferSize == 0) return EFI_SUCCESS;
+  if (!Buffer)                        return EFI_INVALID_PARAMETER;
+  if (MediaId != Dev->Media.MediaId)  return EFI_MEDIA_CHANGED;
+  if (Dev->Media.ReadOnly)            return EFI_WRITE_PROTECTED;
+  if (BufferSize == 0)                return EFI_SUCCESS;
 
   BlkSize = Dev->Media.BlockSize;
-  if (BufferSize % BlkSize) return EFI_BAD_BUFFER_SIZE;
-  BlkCnt = BufferSize / BlkSize;
+  if (BufferSize % BlkSize)          return EFI_BAD_BUFFER_SIZE;
 
-  ZeroMem (&Cmd, sizeof (Cmd));
-  Cmd.cdb[0] = SCSI_OP_WRITE_10;
-  Cmd.cdb[2] = (u8)((Lba >> 24) & 0xFF);
-  Cmd.cdb[3] = (u8)((Lba >> 16) & 0xFF);
-  Cmd.cdb[4] = (u8)((Lba >>  8) & 0xFF);
-  Cmd.cdb[5] = (u8)( Lba        & 0xFF);
-  Cmd.cdb[7] = (u8)((BlkCnt >>  8) & 0xFF);
-  Cmd.cdb[8] = (u8)( BlkCnt        & 0xFF);
-  Cmd.buf     = Buffer;
-  Cmd.datalen = (UINT32)BufferSize;
-  Cmd.lun     = Dev->Lun;
+  /* Round MaxBytes down to a whole number of blocks */
+  MaxBytes = (UFS_MAX_XFER_BYTES / BlkSize) * BlkSize;
 
-  return UfsUtpCmdProcess (Dev->Ufs, &Cmd) ? EFI_DEVICE_ERROR : EFI_SUCCESS;
+  CurLba = Lba;
+  CurBuf = (UINT8 *)Buffer;
+
+  while (BufferSize > 0) {
+    ThisBytes  = MIN (BufferSize, MaxBytes);
+    ThisBlkCnt = ThisBytes / BlkSize;
+
+    ZeroMem (&Cmd, sizeof (Cmd));
+    Cmd.cdb[0] = SCSI_OP_WRITE_10;
+    Cmd.cdb[2] = (u8)((CurLba >> 24) & 0xFF);
+    Cmd.cdb[3] = (u8)((CurLba >> 16) & 0xFF);
+    Cmd.cdb[4] = (u8)((CurLba >>  8) & 0xFF);
+    Cmd.cdb[5] = (u8)( CurLba        & 0xFF);
+    Cmd.cdb[7] = (u8)((ThisBlkCnt >>  8) & 0xFF);
+    Cmd.cdb[8] = (u8)( ThisBlkCnt        & 0xFF);
+    Cmd.buf     = CurBuf;
+    Cmd.datalen = (UINT32)ThisBytes;
+    Cmd.lun     = Dev->Lun;
+
+    if (UfsUtpCmdProcess (Dev->Ufs, &Cmd)) {
+      DEBUG ((DEBUG_ERROR, "UFS: WriteBlocks LUN%u LBA=%Lu cnt=%Lu FAILED\n",
+              Dev->Lun, CurLba, (UINT64)ThisBlkCnt));
+      return EFI_DEVICE_ERROR;
+    }
+
+    BufferSize -= ThisBytes;
+    CurBuf     += ThisBytes;
+    CurLba     += (EFI_LBA)ThisBlkCnt;
+  }
+
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS EFIAPI
@@ -167,108 +234,6 @@ ExynosUfsDiskIoNotify (
 {
   DEBUG ((DEBUG_INFO, "UFS: DiskIo notify - connecting LUN handles\n"));
   ExynosUfsConnectLuns ();
-}
-
-/* ─── ReadyToBoot event callback ─────────────────────────────────────────────
- *
- * EVT_SIGNAL_READY_TO_BOOT fires after all DXE drivers are dispatched and
- * before BDS loads any boot option.  At this point DiskIoDxe, PartitionDxe,
- * and all filesystem drivers are guaranteed to be present.
- *
- * This is the belt-and-suspenders guarantee: even if the platform's BDS
- * implementation skips EfiBootManagerConnectAll() -- which many downstream
- * UEFI ports do -- this callback still ensures PartitionDxe has connected to
- * our handles and produced child SimpleFileSystem handles that BDS can boot.
- */
-STATIC VOID
-ExynosUfsDumpHandles (VOID)
-{
-  EFI_STATUS                        Status;
-  EFI_HANDLE                       *Handles;
-  UINTN                             Count, i;
-  EFI_BLOCK_IO_PROTOCOL            *Bio;
-  EFI_DEVICE_PATH_PROTOCOL         *Dp;
-  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *Sfs;
-  CHAR16                           *DpStr;
-
-  DEBUG ((DEBUG_ERROR, "\n--- UFS handle dump ---\n"));
-
-  /* All BlockIo handles - shows what PartitionDxe produced */
-  Count   = 0;
-  Handles = NULL;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid,
-                                     NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "BlockIo handles: %u (Status=%r)\n", (UINT32)Count, Status));
-  if (!EFI_ERROR (Status)) {
-    for (i = 0; i < Count; i++) {
-      Status = gBS->HandleProtocol (Handles[i], &gEfiBlockIoProtocolGuid,
-                                    (VOID **)&Bio);
-      DpStr  = NULL;
-      if (!EFI_ERROR (gBS->HandleProtocol (Handles[i],
-                                           &gEfiDevicePathProtocolGuid,
-                                           (VOID **)&Dp))) {
-        DpStr = ConvertDevicePathToText (Dp, FALSE, FALSE);
-      }
-      DEBUG ((DEBUG_ERROR,
-              "  [%02u] MediaId=%u BlkSz=%u LastBlk=%Lu LogPart=%u Present=%u"
-              " ReadOnly=%u\n        Path: %s\n",
-              (UINT32)i,
-              Bio->Media->MediaId,
-              Bio->Media->BlockSize,
-              Bio->Media->LastBlock,
-              Bio->Media->LogicalPartition,
-              Bio->Media->MediaPresent,
-              Bio->Media->ReadOnly,
-              DpStr ? DpStr : L"(no path)"));
-      if (DpStr) FreePool (DpStr);
-    }
-    FreePool (Handles);
-  }
-
-  /* SimpleFileSystem handles - these are what BDS actually boots from */
-  Count   = 0;
-  Handles = NULL;
-  Status  = gBS->LocateHandleBuffer (ByProtocol,
-                                     &gEfiSimpleFileSystemProtocolGuid,
-                                     NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "SimpleFileSystem handles: %u (Status=%r)\n",
-          (UINT32)Count, Status));
-  if (!EFI_ERROR (Status)) {
-    for (i = 0; i < Count; i++) {
-      DpStr = NULL;
-      if (!EFI_ERROR (gBS->HandleProtocol (Handles[i],
-                                           &gEfiDevicePathProtocolGuid,
-                                           (VOID **)&Dp))) {
-        DpStr = ConvertDevicePathToText (Dp, FALSE, FALSE);
-      }
-      /* Try to open root dir to confirm it's actually mountable */
-      Status = gBS->HandleProtocol (Handles[i],
-                                    &gEfiSimpleFileSystemProtocolGuid,
-                                    (VOID **)&Sfs);
-      if (!EFI_ERROR (Status)) {
-        EFI_FILE_PROTOCOL *Root = NULL;
-        EFI_STATUS         OpenStatus = Sfs->OpenVolume (Sfs, &Root);
-        DEBUG ((DEBUG_ERROR, "  [%02u] OpenVolume=%r  Path: %s\n",
-                (UINT32)i, OpenStatus, DpStr ? DpStr : L"(no path)"));
-        if (!EFI_ERROR (OpenStatus) && Root) Root->Close (Root);
-      }
-      if (DpStr) FreePool (DpStr);
-    }
-    FreePool (Handles);
-  }
-
-  DEBUG ((DEBUG_ERROR, "--- end UFS handle dump ---\n\n"));
-}
-
-STATIC VOID EFIAPI
-ExynosUfsReadyToBoot (
-  IN EFI_EVENT  Event,
-  IN VOID      *Context)
-{
-  DEBUG ((DEBUG_ERROR, "UFS: ReadyToBoot - final connect pass\n"));
-  ExynosUfsConnectLuns ();
-  ExynosUfsDumpHandles ();
-  gBS->CloseEvent (Event);
 }
 
 /* ─── LUN enumeration helpers ────────────────────────────────────────────────*/
@@ -524,7 +489,7 @@ ExynosUfs9830DxeEntry (
    * ensures PartitionDxe has connected and produced child handles before BDS
    * examines the system for boot candidates.
    */
-  Status = gBS->CreateEventEx (
+/*  Status = gBS->CreateEventEx (
                   EVT_NOTIFY_SIGNAL,
                   TPL_CALLBACK,
                   ExynosUfsReadyToBoot,
@@ -535,7 +500,7 @@ ExynosUfs9830DxeEntry (
     DEBUG ((DEBUG_WARN, "UFS: Failed to create ReadyToBoot event: %r\n", Status));
   } else {
     DEBUG ((DEBUG_INFO, "UFS: ReadyToBoot event registered\n"));
-  }
+  }*/
 
   return EFI_SUCCESS;
 }
