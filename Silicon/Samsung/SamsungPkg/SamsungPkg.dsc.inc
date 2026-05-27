@@ -35,3 +35,4 @@
   SamsungPkg/Drivers/DdrInfoDxe/DdrInfoDxe.inf
   SamsungPkg/Drivers/GpioDxe/GpioDxe.inf
   SamsungPkg/Drivers/SpeedyDxe/SpeedyDxe.inf
+  SamsungPkg/Drivers/UfsDxe/UfsDxe.inf
