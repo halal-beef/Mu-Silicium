@@ -262,6 +262,8 @@ SerialPortInitialize ()
     FrameBufferData.FontScale = (ScaleX < ScaleY) ? ScaleX : ScaleY;
   }
 
+  FrameBufferData.FontScale = 3;
+
   // Verify Font Scale
   if (!FrameBufferData.FontScale) {
     FrameBufferData.FontScale = 1;
