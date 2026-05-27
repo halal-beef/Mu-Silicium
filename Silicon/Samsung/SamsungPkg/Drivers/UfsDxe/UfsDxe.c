@@ -49,7 +49,7 @@ void ufs_lld_dme_set (void *h, UINT32 addr, UINT32 val)
   struct UfsHost     *Ufs = (struct UfsHost *)h;
   struct UfsUicCmd   cmd = {UIC_CMD_DME_SET, 0, 0, 0};
   cmd.Arg1 = addr;
-  cmd.Arg2 = val;
+  cmd.Arg3 = val;
   Ufs->UicCmd = &cmd;
   UfsSendUicCmd (Ufs);
 }
