@@ -641,6 +641,31 @@ UfsUtpCmdProcess (
 
 STATIC
 EFI_STATUS
+UfsUtpCmdProcessSwp (
+  struct UfsHost *Ufs,
+  ScsiCommandMeta *Cmd)
+{
+  UfsUtpInit(Ufs, Cmd->Lun);
+  Ufs->ScsiCmd = Cmd;
+  Ufs->Lun = Cmd->Lun;
+
+  UfsWriteCmdUcd(Ufs);
+  UfsMapSg(Ufs);
+  if (UfsWriteUtrd(Ufs, UPIU_TRANSACTION_COMMAND))
+    return EFI_DEVICE_ERROR;
+
+  MemoryFence();
+
+  UfsUtpSend(Ufs, UPIU_TRANSACTION_COMMAND);
+
+  if (UfsUtpWaitResponse(Ufs, UPIU_TRANSACTION_COMMAND))
+    return EFI_TIMEOUT;
+
+  return UfsUtpCheckResult(Ufs);
+}
+
+STATIC
+EFI_STATUS
 UfsUtpNopProcess (struct UfsHost *Ufs)
 {
   UfsUtpInit(Ufs, 0);
@@ -1065,8 +1090,8 @@ UfsInitInterface (
   }
 
   DEBUG((EFI_D_INFO, "UFS post-gear change pass\n"));
-  DEBUG ((EFI_D_INFO, "UFS Power mode G%d M%d L%d Series%d\n", Pmd->Gear, Pmd->Mode, Pmd->Lane, Pmd->HsSeries));
-  DEBUG ((EFI_D_INFO, "UFS initialization fully complete, good night!\n"));
+  DEBUG((EFI_D_INFO, "UFS Power mode G%d M%d L%d Series%d\n", Pmd->Gear, Pmd->Mode, Pmd->Lane, Pmd->HsSeries));
+  DEBUG((EFI_D_INFO, "UFS initialization fully complete, good night!\n"));
 
   return EFI_SUCCESS;
 }
@@ -1301,6 +1326,83 @@ UfsWrite (
   return EFI_SUCCESS;
 }
 
+UINT8 *
+ScsiSwpCheck(
+  struct UfsHost *Ufs,
+  UINT32 Lun
+)
+{
+  ScsiCommandMeta Cmd;
+  UINT8 *Buf;
+
+  Buf = AllocateAlignedPages (1, SIZE_4KB);
+  if (!Buf)
+    return 0;
+
+  ZeroMem (Buf, SIZE_4KB);
+
+  ZeroMem (&Cmd, sizeof (Cmd));
+  Cmd.Cdb[0] = SCSI_MODE_SEN10;
+  Cmd.Cdb[1] = 0x08;
+  Cmd.Cdb[2] = 0x0A;
+  Cmd.Cdb[8] = 0x14;
+
+  Cmd.Buf = Buf;
+  Cmd.DataLen = 0x14;
+  Cmd.Lun = Lun;
+
+  UfsRequestSense(Ufs, Lun);
+
+  if(EFI_ERROR(UfsUtpCmdProcessSwp(Ufs, &Cmd)))
+  {
+    DEBUG((EFI_D_ERROR, "UFS SWP check failed\n"));
+  }
+  
+  if (!!(Buf[12] & 0x08))
+  	DEBUG((EFI_D_ERROR, "UFS SWP check lun%d SWP=Enabled\n", Lun));
+  else
+    DEBUG((EFI_D_ERROR, "UFS SWP check lun%d SWP=Disabled\n", Lun));
+
+  return Buf;
+}
+
+EFI_STATUS
+UfsSwpUnlock (
+  struct UfsHost *Ufs,
+  UINT32 Lun,
+  UINT32 Set,
+  UINT8 *SwpData
+)
+{
+  ScsiCommandMeta Cmd;
+
+  if (!SwpData)
+    return EFI_INVALID_PARAMETER;
+
+  SwpData[12] &= ~0x08; // Clear SWP bit
+
+  ZeroMem (&Cmd, sizeof (Cmd));
+  Cmd.Cdb[0] = SCSI_MODE_SEL10;
+  Cmd.Cdb[1] = (1 << 4) |  1;
+  Cmd.Cdb[8] = 0x14;
+
+  Cmd.Buf = SwpData;
+  Cmd.DataLen = 0x14;
+  Cmd.Lun = Lun;
+
+  if(EFI_ERROR(UfsUtpCmdProcessSwp(Ufs, &Cmd)))
+  {
+    DEBUG((EFI_D_ERROR, "UFS SWP unlock failed\n"));
+    FreeAlignedPages(SwpData, 1);
+    return EFI_DEVICE_ERROR;
+  }
+  
+  DEBUG((EFI_D_ERROR, "UFS SWP unlock lun%d success\n", Lun));
+
+  FreeAlignedPages(SwpData, 1);
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 InitUfsDriver (
@@ -1353,12 +1455,12 @@ InitUfsDriver (
     DEBUG ((EFI_D_ERROR, "UFS: LUN %d capacity: %llu blocks (%llu MB), block size: %u bytes\n", Lun, BlkCnt, (BlkCnt * BlkSize) / (1024 * 1024), BlkSize));
   }
 
-  DEBUG((EFI_D_ERROR, "Attempt UFS READ\n"));
-  VOID *Buf = AllocateAlignedPages (1, SIZE_4KB);
-  UfsRead(Ufs, 0, 0x7B90, 1, 4096, Buf);
-  char *data = "Test test test test.";
-  CopyMem (Buf, data, AsciiStrLen(data));
-  UfsWrite(Ufs, 0, 0x7B90, 1, 4096, Buf);
+  UfsUtpQueryRetry (Ufs, DESC_R_CONFIG_DESC, 0); // Somehow bypasses the other write protection
+
+  ScsiSwpCheck(Ufs, 0);
+  UINT8 *SwpData = ScsiSwpCheck(Ufs, 1);
+
+  UfsSwpUnlock(Ufs, 1, 0, SwpData);
 
   while(1);
 
