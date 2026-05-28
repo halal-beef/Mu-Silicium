@@ -3,6 +3,9 @@
 // vsc
 #include <AArch64/ProcessorBind.h>
 
+#ifndef UFS_DXE_H_
+#define UFS_DXE_H_
+
 #define MAX_CDB_SIZE 16
 #define ALIGNED_UPIU_SIZE 1024
 #define SCSI_MAX_SG_SEGMENTS 128
@@ -40,7 +43,6 @@
 #define SCSI_MODE_SEL10        0x55
 #define SCSI_MODE_SEN10        0x5A
 
-
 #define UTP_TRANSFER_REQ_COMPL          BIT0
 #define UIC_ERROR                       BIT2
 #define UIC_POWER_MODE                  BIT4
@@ -53,23 +55,12 @@
 #define SYSTEM_BUS_FATAL_ERROR          BIT17
 #define INT_FATAL_ERRORS                (DEVICE_FATAL_ERROR | CONTROLLER_FATAL_ERROR | SYSTEM_BUS_FATAL_ERROR | UIC_LINK_LOST)
 
-#define BRD_SMDK  (1U << __BRD_SMDK)
-#define BRD_ASB   (1U << __BRD_ASB)
-#define BRD_HSIE  (1U << __BRD_HSIE)
-#define BRD_ZEBU  (1U << __BRD_ZEBU)
-#define BRD_UNIV  (1U << __BRD_UNIV)
-#define BRD_MAX   (1U << __BRD_MAX)
-#define BRD_ALL   ((1U << __BRD_MAX) - 1)
+#define UFS_RATE              2
+#define UFS_POWER_MODE        1
+#define UFS_RXTX_POWER_MODE   ((UFS_POWER_MODE << 4) | UFS_POWER_MODE)
 
-
-enum {
-  __BRD_SMDK,
-  __BRD_ASB,
-  __BRD_HSIE,
-  __BRD_ZEBU,
-  __BRD_UNIV,
-  __BRD_MAX,
-};
+#define UPMCRS(x)      (((x) >> 8) & 7)
+#define PWR_LOCAL       1
 
 typedef enum {
   UFS_CAL_NO_ERROR = 0,
@@ -587,3 +578,8 @@ enum {
   UTP_DEVICE_MANAGEMENT = 0x20000000,
   UTP_REQ_DESC_INT_CMD  = 0x01000000,
 };
+
+INT32
+UfsSendUicCmd (struct UfsHost *Ufs);
+
+#endif /* UFS_DXE_H_ */
