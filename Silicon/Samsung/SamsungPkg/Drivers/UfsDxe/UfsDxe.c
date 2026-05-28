@@ -1199,6 +1199,107 @@ UfsReadCapacity (
   return EFI_SUCCESS;
 }
 
+EFI_STATUS
+UfsRead (
+  struct UfsHost *Ufs,
+  UINT32 Lun,
+  UINT32 Lba,
+  UINTN BlkCnt,
+  UINT32 BlkSize,
+  VOID *Buf)
+{
+  EFI_STATUS Status;
+  ScsiCommandMeta Cmd;
+  UINTN MaxBlksPerChunk;
+  UINTN ChunkBlks;
+  UINT8 *BufPtr;
+
+  MaxBlksPerChunk = UFS_MAX_XFER_LEN / BlkSize;
+  BufPtr = (UINT8 *)Buf;
+
+  while (BlkCnt > 0) {
+    ChunkBlks = MIN (BlkCnt, MaxBlksPerChunk);
+
+    ZeroMem (&Cmd, sizeof (Cmd));
+
+    Cmd.Cdb[0] = SCSI_OP_READ_10;
+    Cmd.Cdb[1] = 0;
+    Cmd.Cdb[2] = (UINT8)((Lba >> 24) & 0xFF);
+    Cmd.Cdb[3] = (UINT8)((Lba >> 16) & 0xFF);
+    Cmd.Cdb[4] = (UINT8)((Lba >> 8) & 0xFF);
+    Cmd.Cdb[5] = (UINT8)(Lba & 0xFF);
+    Cmd.Cdb[6] = 0;
+    Cmd.Cdb[7] = (UINT8)((ChunkBlks >> 8) & 0xFF);
+    Cmd.Cdb[8] = (UINT8)(ChunkBlks & 0xFF);
+    Cmd.Cdb[9] = 0;
+    Cmd.Buf = BufPtr;
+    Cmd.DataLen = (UINT32)(ChunkBlks * BlkSize);
+    Cmd.Lun = Lun;
+
+    Status = UfsUtpCmdProcess (Ufs, &Cmd);
+    if (EFI_ERROR (Status))
+    {
+      return Status;
+    }
+
+    Lba += ChunkBlks;
+    BufPtr += ChunkBlks * BlkSize;
+    BlkCnt -= ChunkBlks;
+  }
+
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+UfsWrite (
+  struct UfsHost *Ufs,
+  UINT32 Lun,
+  UINT32 Lba,
+  UINTN BlkCnt,
+  UINT32 BlkSize,
+  VOID *Buf)
+{
+  EFI_STATUS Status;
+  ScsiCommandMeta Cmd;
+  UINTN MaxBlksPerChunk;
+  UINTN ChunkBlks;
+  UINT8 *BufPtr;
+
+  MaxBlksPerChunk = UFS_MAX_XFER_LEN / BlkSize;
+  BufPtr = (UINT8 *)Buf;
+
+  while (BlkCnt > 0) {
+    ChunkBlks = MIN (BlkCnt, MaxBlksPerChunk);
+
+    ZeroMem (&Cmd, sizeof (Cmd));
+
+    Cmd.Cdb[0] = SCSI_OP_WRITE_10;
+    Cmd.Cdb[1] = 0;
+    Cmd.Cdb[2] = (UINT8)((Lba >> 24) & 0xFF);
+    Cmd.Cdb[3] = (UINT8)((Lba >> 16) & 0xFF);
+    Cmd.Cdb[4] = (UINT8)((Lba >> 8) & 0xFF);
+    Cmd.Cdb[5] = (UINT8)(Lba & 0xFF);
+    Cmd.Cdb[6] = 0;
+    Cmd.Cdb[7] = (UINT8)((ChunkBlks >> 8) & 0xFF);
+    Cmd.Cdb[8] = (UINT8)(ChunkBlks & 0xFF);
+    Cmd.Cdb[9] = 0;
+    Cmd.Buf = BufPtr;
+    Cmd.DataLen = (UINT32)(ChunkBlks * BlkSize);
+    Cmd.Lun = Lun;
+
+    Status = UfsUtpCmdProcess(Ufs, &Cmd);
+    if (EFI_ERROR (Status))
+    {
+      return Status;
+    }
+
+    Lba += ChunkBlks;
+    BufPtr += ChunkBlks * BlkSize;
+    BlkCnt -= ChunkBlks;
+  }
+
+  return EFI_SUCCESS;
+}
 
 EFI_STATUS
 EFIAPI
@@ -1251,6 +1352,13 @@ InitUfsDriver (
     UfsReadCapacity(Ufs, Lun, &BlkCnt, &BlkSize);
     DEBUG ((EFI_D_ERROR, "UFS: LUN %d capacity: %llu blocks (%llu MB), block size: %u bytes\n", Lun, BlkCnt, (BlkCnt * BlkSize) / (1024 * 1024), BlkSize));
   }
+
+  DEBUG((EFI_D_ERROR, "Attempt UFS READ\n"));
+  VOID *Buf = AllocateAlignedPages (1, SIZE_4KB);
+  UfsRead(Ufs, 0, 0x7B90, 1, 4096, Buf);
+  char *data = "Test test test test.";
+  CopyMem (Buf, data, AsciiStrLen(data));
+  UfsWrite(Ufs, 0, 0x7B90, 1, 4096, Buf);
 
   while(1);
 

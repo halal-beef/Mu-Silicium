@@ -9,6 +9,7 @@
 #define UFS_NUTRS 2
 #define UFS_BIT_LEN_OF_DWORD 32
 #define UPIU_DATA_SIZE (ALIGNED_UPIU_SIZE - 20 - sizeof(struct UfsUpiuHeader))
+#define UFS_MAX_XFER_LEN SCSI_MAX_SG_SEGMENTS * SIZE_4KB
 
 #define DW_NUM_OF_TSF 20
 
