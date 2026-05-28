@@ -2,9 +2,6 @@
 
 #include "UfsDxe.h"
 
-// vscode
-#include <Uefi/UefiSpec.h>
-
 void ufs_lld_dme_set (void *h, UINT32 addr, UINT32 val)
 {
   struct UfsHost     *Ufs = (struct UfsHost *)h;

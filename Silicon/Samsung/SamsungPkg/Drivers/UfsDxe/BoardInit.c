@@ -1,12 +1,8 @@
 #include <Library/DebugLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-#include <Library/MemoryMapHelperLib.h> // TODO REMOVE
 #include <Library/IoLib.h>
 
 #include "UfsDxe.h"
-
-// vscode
-#include <Uefi/UefiSpec.h>
 
 #define WARM_RESET                  (1U << 28)
 #define LITTLE_WDT_RESET            (1U << 24)

@@ -10,9 +10,6 @@
 #include "Cal9830.h"
 #include "BoardInit.h"
 
-// vscode
-#include <Uefi/UefiSpec.h>
-
 UINT8 gQueryParams[][5] = {
   /* [0] unused */
   {0,                    0,                              0,                           0, 0},
@@ -41,6 +38,24 @@ UINT8 gQueryParams[][5] = {
 };
 
 STATIC
+VOID
+UfsMapSg (struct UfsHost *Ufs)
+{
+  UINT32 i, len, sg_segs, remaining, seg_bytes;
+  len = Ufs->ScsiCmd->DataLen;
+  sg_segs = (len + UFS_SG_BLOCK_SIZE - 1) / UFS_SG_BLOCK_SIZE;
+
+  for (i = 0; i < sg_segs; i++) {
+    UINT64 phys = (UINT64)(UINTN)Ufs->ScsiCmd->Buf + (UINT64)i * UFS_SG_BLOCK_SIZE;
+    remaining = len - i * UFS_SG_BLOCK_SIZE;
+    seg_bytes = (remaining < UFS_SG_BLOCK_SIZE) ? remaining : UFS_SG_BLOCK_SIZE;
+    Ufs->CmdDescAddr->PrdTable[i].Size = seg_bytes - 1;
+    Ufs->CmdDescAddr->PrdTable[i].BaseAddr  = (UINT32)(phys & 0xFFFFFFFFULL);
+    Ufs->CmdDescAddr->PrdTable[i].UpperAddr = (UINT32)(phys >> 32);
+  }
+}
+
+STATIC
 UINT32
 UfsCmdGetDir (ScsiCommandMeta *Cmd)
 {
@@ -55,6 +70,26 @@ UfsCmdGetDir (ScsiCommandMeta *Cmd)
     return UTP_HOST_TO_DEVICE;
   default:
     return UTP_DEVICE_TO_HOST;
+  }
+}
+
+STATIC
+UINT32
+UfsCmdGetFlags (ScsiCommandMeta *Cmd)
+{
+  if (!Cmd->DataLen) return UPIU_CMD_FLAGS_NONE;
+  switch (Cmd->Cdb[0]) {
+  case SCSI_OP_WRITE_10:
+  case SCSI_OP_WRITE_BUFFER:
+  case SCSI_OP_FORMAT_UNIT:
+  case SCSI_OP_UNMAP:
+  case SCSI_OP_SECU_PROT_OUT:
+  case SCSI_MODE_SEL10:
+    return UPIU_CMD_FLAGS_WRITE;
+  case SCSI_OP_START_STOP_UNIT:
+    return UPIU_CMD_FLAGS_NONE;
+  default:
+    return UPIU_CMD_FLAGS_READ;
   }
 }
 
@@ -136,10 +171,10 @@ UfsInitCal (struct UfsHost *Ufs)
   Ufs->CalParam->Board = BRD_UNIV;
   // TODO: Derive from ChipInfo driver.
   Ufs->CalParam->EvtVer  = (MmioRead32(0x10000010UL) >> 20) & 0xf;
-  DEBUG((EFI_D_ERROR, "UFS EVT version %d\n", Ufs->CalParam->EvtVer));
+  DEBUG((EFI_D_INFO, "UFS EVT version %d\n", Ufs->CalParam->EvtVer));
 
   if (UfsCalInit(Ufs->CalParam) != UFS_CAL_NO_ERROR) {
-    DEBUG ((EFI_D_ERROR, "UFS ufs_cal_init failed\n"));
+    DEBUG ((EFI_D_ERROR, "UFS Calibration Init failed\n"));
     return EFI_DEVICE_ERROR;
   }
   return EFI_SUCCESS;
@@ -218,7 +253,7 @@ UfsPreLink (
     return EFI_DEVICE_ERROR;
   }
 
-  DEBUG ((EFI_D_ERROR, "UFS pre-link calibration passed\n"));
+  DEBUG ((EFI_D_INFO, "UFS pre-link calibration passed\n"));
   return EFI_SUCCESS;
 }
 
@@ -237,7 +272,7 @@ UfsUpdateMaxGear (
 
   Ufs->CalParam->MaxGear = (UINT8)MIN(cmd.Arg3, (UINT32)Ufs->GearMode);
 
-  DEBUG ((EFI_D_ERROR, "UFS Max Gear: %d\n", Ufs->CalParam->MaxGear));
+  DEBUG ((EFI_D_INFO, "UFS Max Gear: %d\n", Ufs->CalParam->MaxGear));
   return 0;
 }
 
@@ -256,7 +291,7 @@ UfsUpdateActiveLane (struct UfsHost *Ufs)
   if (UfsSendUicCmd (Ufs)) return EFI_DEVICE_ERROR;
   Ufs->CalParam->ActiveRxLane = (UINT8)rx.Arg3;
 
-  DEBUG ((EFI_D_ERROR, "UFS active TX=%d RX=%d\n", Ufs->CalParam->ActiveTxLane, Ufs->CalParam->ActiveRxLane));
+  DEBUG ((EFI_D_INFO, "UFS active TX=%d RX=%d\n", Ufs->CalParam->ActiveTxLane, Ufs->CalParam->ActiveRxLane));
   return 0;
 }
 
@@ -349,7 +384,8 @@ UfsUtpCheckResult (struct UfsHost *Ufs)
 
   if (utrd->dw[2] != OCS_SUCCESS)
   {
-    DEBUG ((EFI_D_ERROR, "UFS OCS=0x%02x response=0x%02x type=0x%02x\n", utrd->dw[2], hdr->Response, hdr->Type));
+    // Only warn even if it's technically not SUCCESS, NOP throws OCS 01 but UFS works as normal.
+    DEBUG ((EFI_D_WARN, "UFS OCS=0x%02x response=0x%02x type=0x%02x\n", utrd->dw[2], hdr->Response, hdr->Type));
   
     return (hdr->Response != 0) ? EFI_DEVICE_ERROR : EFI_SUCCESS;
   }
@@ -364,7 +400,12 @@ UfsUtpCheckResult (struct UfsHost *Ufs)
   return EFI_SUCCESS;
 }
 
-static int UfsWriteUtrd (struct UfsHost *Ufs, UINT32 type)
+STATIC
+INT32
+UfsWriteUtrd (
+  struct UfsHost *Ufs,
+  UINT32 type
+)
 {
   struct UfsUtrd *utrd = Ufs->UtrdAddr;
   UINT32 Length, SgSegs;
@@ -395,7 +436,30 @@ static int UfsWriteUtrd (struct UfsHost *Ufs, UINT32 type)
   return 0;
 }
 
-static int UfsWriteQueryUcd (struct UfsHost *Ufs, QueryIndex qry)
+STATIC
+VOID
+UfsWriteCmdUcd (struct UfsHost *Ufs)
+{
+  struct UfsUpiu *cmd = &Ufs->CmdDescAddr->CommandUpiu;
+  struct UfsUpiuHeader *hdr = &cmd->Header;
+  UINT8 *tsf  = cmd->Tsf;
+  UINT32 dlen = SwapBytes32(Ufs->ScsiCmd->DataLen);
+
+  hdr->Type = UPIU_TRANSACTION_COMMAND;
+  hdr->Flags = (UINT8)UfsCmdGetFlags (Ufs->ScsiCmd);
+  hdr->Lun = (UINT8)Ufs->Lun;
+  hdr->Tag = 0;
+
+  CopyMem (&tsf[0], &dlen, sizeof (UINT32));
+  CopyMem (&tsf[4], Ufs->ScsiCmd->Cdb, MAX_CDB_SIZE);
+}
+
+STATIC
+INT32
+UfsWriteQueryUcd (
+  struct UfsHost *Ufs,
+  QueryIndex qry
+)
 {
   struct UfsUpiu *cmd = &Ufs->CmdDescAddr->CommandUpiu;
   struct UfsUpiuHeader*Header = &cmd->Header;
@@ -447,8 +511,8 @@ static void UfsQueryReadInfo (struct UfsHost *Ufs, UINT8 idn)
 {
   struct UfsUpiu *resp = &Ufs->CmdDescAddr->ResponseUpiu;
   UINT8 *data = resp->Data;
-  VOID *dst  = NULL;
-  UINTN len  = 0;
+  VOID *dst = NULL;
+  UINTN len = 0;
   UINT32 lun;
 
   switch (idn) {
@@ -512,19 +576,25 @@ STATIC
 EFI_STATUS
 UfsUtpQueryProcess (struct UfsHost *Ufs, QueryIndex qry, UINT32 lun)
 {
-  UfsUtpInit (Ufs, lun);
+  UfsUtpInit(Ufs, lun);
 
-  if (UfsWriteQueryUcd (Ufs, qry)) return EFI_DEVICE_ERROR;
-  if (UfsWriteUtrd (Ufs, UPIU_TRANSACTION_QUERY_REQ)) return EFI_DEVICE_ERROR;
+  if (UfsWriteQueryUcd(Ufs, qry))
+    return EFI_DEVICE_ERROR;
+
+  if (UfsWriteUtrd(Ufs, UPIU_TRANSACTION_QUERY_REQ))
+    return EFI_DEVICE_ERROR;
+
   MemoryFence();
 
-  UfsUtpSend (Ufs, UPIU_TRANSACTION_QUERY_REQ);
+  UfsUtpSend(Ufs, UPIU_TRANSACTION_QUERY_REQ);
 
-  if (UfsUtpWaitResponse (Ufs, UPIU_TRANSACTION_QUERY_REQ)) return EFI_DEVICE_ERROR;
+  if (UfsUtpWaitResponse(Ufs, UPIU_TRANSACTION_QUERY_REQ))
+    return EFI_TIMEOUT;
 
-  if (EFI_ERROR(UfsUtpCheckResult (Ufs))) return EFI_DEVICE_ERROR;
+  if (EFI_ERROR(UfsUtpCheckResult(Ufs)))
+    return EFI_DEVICE_ERROR;
 
-  UfsQueryGetData (Ufs, qry);
+  UfsQueryGetData(Ufs, qry);
 
   return EFI_SUCCESS;
 }
@@ -546,6 +616,31 @@ UfsUtpQueryRetry (struct UfsHost *Ufs, QueryIndex qry, UINT32 lun)
 
 STATIC
 EFI_STATUS
+UfsUtpCmdProcess (
+  struct UfsHost *Ufs,
+  ScsiCommandMeta *Cmd)
+{
+  UfsUtpInit(Ufs, 0);
+  Ufs->ScsiCmd = Cmd;
+  Ufs->Lun = Cmd->Lun;
+
+  UfsWriteCmdUcd(Ufs);
+  UfsMapSg(Ufs);
+  if (UfsWriteUtrd(Ufs, UPIU_TRANSACTION_COMMAND))
+    return EFI_DEVICE_ERROR;
+
+  MemoryFence();
+
+  UfsUtpSend(Ufs, UPIU_TRANSACTION_COMMAND);
+
+  if (UfsUtpWaitResponse(Ufs, UPIU_TRANSACTION_COMMAND))
+    return EFI_TIMEOUT;
+
+  return UfsUtpCheckResult(Ufs);
+}
+
+STATIC
+EFI_STATUS
 UfsUtpNopProcess (struct UfsHost *Ufs)
 {
   UfsUtpInit(Ufs, 0);
@@ -554,7 +649,7 @@ UfsUtpNopProcess (struct UfsHost *Ufs)
   UfsUtpSend(Ufs, UPIU_TRANSACTION_NOP_OUT);
 
   if (UfsUtpWaitResponse(Ufs, UPIU_TRANSACTION_NOP_OUT))
-    return EFI_DEVICE_ERROR;
+    return EFI_TIMEOUT;
 
   return UfsUtpCheckResult(Ufs);
 }
@@ -621,7 +716,7 @@ UfsCheck2Lane (struct UfsHost *Ufs)
   Ufs->CalParam->ConnectedTxLane = (UINT8)tx;
   Ufs->CalParam->ConnectedRxLane = (UINT8)rx;
 
-  DEBUG ((DEBUG_ERROR, "UFS connected TX=%d RX=%d\n", tx, rx));
+  DEBUG ((EFI_D_INFO, "UFS connected TX=%d RX=%d\n", tx, rx));
 
   /* DME_SET PA_ActiveTxDataLanes / PA_ActiveRxDataLanes */
   TxSet.uiccmdr = UIC_CMD_DME_SET;
@@ -691,7 +786,7 @@ UfsPreSetup (
 )
 {
   UINT32 Register;
-  DEBUG((EFI_D_ERROR, "UFS pre-setup\n"));
+  DEBUG((EFI_D_INFO, "UFS pre-setup\n"));
   
   /* UFS_PHY_CONTROL : 1 = Isolation bypassed, PMU MPHY ON */
   Register = MmioRead32((UINTN)Ufs->PhyIsoAddr);
@@ -812,7 +907,7 @@ UfsInitInterface (
   struct UicPwrMode *Pmd = &Ufs->PmdCxt;
   EFI_STATUS Status;
 
-  DEBUG((EFI_D_ERROR, "UFS Host interface init\n"));
+  DEBUG((EFI_D_INFO, "UFS Host interface init\n"));
 
   Status = UfsPreSetup(Ufs);
   if (EFI_ERROR(Status))
@@ -821,11 +916,11 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS pre-setup pass\n"));
+  DEBUG((EFI_D_INFO, "UFS pre-setup pass\n"));
 
   // UfsPreVendorSetup stubbed out cause its empty on all plats
 
-  DEBUG((EFI_D_ERROR, "Getting UFS Lanes\n"));
+  DEBUG((EFI_D_INFO, "Getting UFS Lanes\n"));
 
   Ufs->UicCmd = &LaneCmd;
   if(UfsSendUicCmd(Ufs))
@@ -834,9 +929,9 @@ UfsInitInterface (
     return EFI_DEVICE_ERROR;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS get lane count pass\n"));
+  DEBUG((EFI_D_INFO, "UFS get lane count pass\n"));
+  DEBUG((EFI_D_INFO, "UFS lane count: %d\n", LaneCmd.Arg3));
 
-  DEBUG((EFI_D_ERROR, "UFS lane count: %d\n", LaneCmd.Arg3));
   Ufs->CalParam->AvailableLane = (UINT8)LaneCmd.Arg3;
 
   Status = UfsPreLink(Ufs, Ufs->CalParam->AvailableLane);
@@ -846,7 +941,7 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS pre-link pass\n"));
+  DEBUG((EFI_D_INFO, "UFS pre-link pass\n"));
 
   Ufs->UicCmd = &LinkCmd;
   if(UfsSendUicCmd(Ufs))
@@ -855,7 +950,7 @@ UfsInitInterface (
     return EFI_DEVICE_ERROR;
   }
 
-  DEBUG ((EFI_D_ERROR, "UFS link is up\n"));
+  DEBUG ((EFI_D_INFO, "UFS link is up\n"));
 
   Status = UfsUpdateMaxGear(Ufs);
   if (EFI_ERROR(Status))
@@ -864,7 +959,7 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS update max gear pass\n"));
+  DEBUG((EFI_D_INFO, "UFS update max gear pass\n"));
 
   if(UfsCalPostLink(Ufs->CalParam) != UFS_CAL_NO_ERROR)
   {
@@ -872,7 +967,7 @@ UfsInitInterface (
     return EFI_DEVICE_ERROR;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS post-link calibration pass\n"));
+  DEBUG((EFI_D_INFO, "UFS post-link calibration pass\n"));
 
   Status = UfsUpdateActiveLane(Ufs);
   if (EFI_ERROR(Status))
@@ -881,11 +976,11 @@ UfsInitInterface (
     return Status;
   }
   
-  DEBUG((EFI_D_ERROR, "UFS Active lanes updated\n"));
+  DEBUG((EFI_D_INFO, "UFS Active lanes updated\n"));
 
   UfsVendorSetup(Ufs);
 
-  DEBUG((EFI_D_ERROR, "UFS vendor setup done\n"));
+  DEBUG((EFI_D_INFO, "UFS vendor setup done\n"));
 
   Status = UfsEndBootMode(Ufs);
   if (EFI_ERROR(Status))
@@ -894,8 +989,8 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS end boot mode done\n"));
-  DEBUG((EFI_D_ERROR, "UFS device initialised\n"));
+  DEBUG((EFI_D_INFO, "UFS end boot mode done\n"));
+  DEBUG((EFI_D_INFO, "UFS device initialised\n"));
 
   Status = UfsCheck2Lane(Ufs);
   if (EFI_ERROR(Status))
@@ -904,7 +999,7 @@ UfsInitInterface (
     return Status;
   } 
 
-  DEBUG((EFI_D_ERROR, "UFS 2 lane check pass\n"));
+  DEBUG((EFI_D_INFO, "UFS 2 lane check pass\n"));
 
   Status = UfsRefClkSetup(Ufs);
   if (EFI_ERROR(Status))
@@ -913,7 +1008,7 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS RefClk setup pass\n"));
+  DEBUG((EFI_D_INFO, "UFS RefClk setup pass\n"));
 
   Status = UfsUtpQueryRetry (Ufs, DESC_R_DEVICE_DESC, 0);
   if (EFI_ERROR(Status))
@@ -922,7 +1017,7 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS device descriptor read pass\n"));
+  DEBUG((EFI_D_INFO, "UFS device descriptor read pass\n"));
 
   Status = UfsUtpQueryRetry (Ufs, DESC_R_GEOMETRY_DESC, 0);
   if (EFI_ERROR(Status))
@@ -931,7 +1026,7 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS geometry descriptor read pass\n"));
+  DEBUG((EFI_D_INFO, "UFS geometry descriptor read pass\n"));
 
   Pmd->Gear = Ufs->GearMode;
   Pmd->Mode = UFS_POWER_MODE;
@@ -951,7 +1046,7 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS power mode change pass\n"));
+  DEBUG((EFI_D_INFO, "UFS power mode change pass\n"));
 
   Status = UfsUpdateActiveLane(Ufs);
   if (EFI_ERROR(Status))
@@ -960,7 +1055,7 @@ UfsInitInterface (
     return Status;
   }
   
-  DEBUG((EFI_D_ERROR, "UFS Active lanes updated\n"));
+  DEBUG((EFI_D_INFO, "UFS Active lanes updated\n"));
 
   Status = UfsPostGearChange (Ufs);
   if (EFI_ERROR (Status))
@@ -969,13 +1064,11 @@ UfsInitInterface (
     return Status;
   }
 
-  DEBUG((EFI_D_ERROR, "UFS post-gear change pass\n"));
+  DEBUG((EFI_D_INFO, "UFS post-gear change pass\n"));
+  DEBUG ((EFI_D_INFO, "UFS Power mode G%d M%d L%d Series%d\n", Pmd->Gear, Pmd->Mode, Pmd->Lane, Pmd->HsSeries));
+  DEBUG ((EFI_D_INFO, "UFS initialization fully complete, good night!\n"));
 
-  DEBUG ((EFI_D_ERROR, "UFS Power mode G%d M%d L%d Series%d\n", Pmd->Gear, Pmd->Mode, Pmd->Lane, Pmd->HsSeries));
-
-  DEBUG ((EFI_D_ERROR, "UFS initialization fully complete, good night!\n"));
-
-  while(1);
+  return EFI_SUCCESS;
 }
 
 struct UfsHost *UfsAllocHost (VOID)
@@ -1040,18 +1133,126 @@ UfsInitHost (
 }
 
 EFI_STATUS
+UfsRequestSense (
+  struct UfsHost *Ufs,
+  UINT32 Lun
+)
+{
+  ScsiCommandMeta Cmd;
+  UINT8 *Buf;
+
+  Buf = AllocateAlignedPages (1, SIZE_4KB);
+  if (!Buf)
+    return EFI_OUT_OF_RESOURCES;
+
+  ZeroMem (Buf, SIZE_4KB);
+
+  ZeroMem (&Cmd, sizeof (Cmd));
+  Cmd.Cdb[0] = SCSI_OP_REQUEST_SENSE;
+  Cmd.Cdb[4] = 18;
+  Cmd.Buf = Buf;
+  Cmd.DataLen = 18;
+  Cmd.Lun = Lun;
+
+  UfsUtpCmdProcess(Ufs, &Cmd);
+
+  DEBUG ((EFI_D_INFO, "UFS: LUN%d REQUEST SENSE sense_key=0x%02x ASC=0x%02x ASCQ=0x%02x\n", Lun, Buf[2] & 0x0F, Buf[12], Buf[13]));
+
+  FreeAlignedPages(Buf, 1);
+  return EFI_SUCCESS;
+}
+
+STATIC
+EFI_STATUS
+UfsReadCapacity (
+  struct UfsHost *Ufs,
+  UINT32 Lun,
+  UINT64 *BlkCnt,
+  UINT32 *BlkSize
+)
+{
+  ScsiCommandMeta Cmd;
+  UINT8 *Buf;
+
+  Buf = AllocateAlignedPages (1, SIZE_4KB);
+  if (!Buf)
+    return EFI_OUT_OF_RESOURCES;
+
+  ZeroMem (Buf, SIZE_4KB);
+  ZeroMem (&Cmd, sizeof (Cmd));
+
+  Cmd.Cdb[0] = SCSI_OP_READ_CAPACITY;
+  Cmd.Buf = Buf;
+  Cmd.DataLen = 8;
+  Cmd.Lun = Lun;
+
+  if (UfsUtpCmdProcess (Ufs, &Cmd))
+  {
+    FreeAlignedPages (Buf, 1);
+    return EFI_DEVICE_ERROR;
+  }
+
+  *BlkCnt  = (UINT64)(((UINT32)Buf[0] << 24) | ((UINT32)Buf[1] << 16) | ((UINT32)Buf[2] <<  8) |  (UINT32)Buf[3]) + 1;
+  *BlkSize = ((UINT32)Buf[4] << 24) | ((UINT32)Buf[5] << 16) | ((UINT32)Buf[6] <<  8) |  (UINT32)Buf[7];
+
+  FreeAlignedPages (Buf, 1);
+  return EFI_SUCCESS;
+}
+
+
+EFI_STATUS
 EFIAPI
 InitUfsDriver (
   IN EFI_HANDLE        ImageHandle,
   IN EFI_SYSTEM_TABLE *SystemTable)
 {
-  DEBUG((EFI_D_ERROR, "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"));
+  EFI_STATUS Status;
   struct UfsHost *Ufs = UfsAllocHost();
+
   if (!Ufs) {
     DEBUG((EFI_D_ERROR, "Failed to allocate UFS host\n"));
     ASSERT(FALSE);
   }
-  UfsInitHost(Ufs);
-  UfsInitInterface(Ufs);
+
+  DEBUG((EFI_D_ERROR, "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"));
+
+  Status = UfsInitHost(Ufs);
+  if (EFI_ERROR(Status)) {
+    DEBUG((EFI_D_ERROR, "Failed to initialize UFS host\n"));
+    return Status;
+  }
+
+  Status = UfsInitInterface(Ufs);
+  if (EFI_ERROR(Status)) {
+    DEBUG((EFI_D_ERROR, "Failed to initialize UFS interface\n"));
+    return Status;
+  }
+
+  if (!UfsUtpQueryRetry (Ufs, ATTR_R_BOOTLUNEN, 0)) {
+    DEBUG ((EFI_D_INFO, "UFS bBootLunEn=0x%x\n", Ufs->Attributes.Array[UPIU_ATTR_ID_BOOTLUNEN]));
+  }
+
+  for (UINT32 Lun = 0; Lun < 8; Lun++)
+  {
+    UINT64 BlkCnt;
+    UINT32 BlkSize;
+
+    gQueryParams[DESC_R_UNIT_DESC][3] = (UINT8)Lun;
+    if (UfsUtpQueryRetry (Ufs, DESC_R_UNIT_DESC, Lun)) {
+      DEBUG((EFI_D_ERROR, "UFS: LUN %d unit desc read failed\n", Lun));
+    }
+
+    if (!Ufs->UnitDesc[Lun].bLUEnable) {
+      continue;
+    }
+
+    UfsRequestSense(Ufs, Lun);
+
+    UfsReadCapacity(Ufs, Lun, &BlkCnt, &BlkSize);
+    DEBUG ((EFI_D_ERROR, "UFS: LUN %d capacity: %llu blocks (%llu MB), block size: %u bytes\n", Lun, BlkCnt, (BlkCnt * BlkSize) / (1024 * 1024), BlkSize));
+  }
+
+  while(1);
+
   return EFI_SUCCESS;
 }
