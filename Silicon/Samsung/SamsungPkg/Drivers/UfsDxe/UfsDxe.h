@@ -1,8 +1,3 @@
-#include <Uefi/UefiSpec.h>
-
-// vsc
-#include <AArch64/ProcessorBind.h>
-
 #ifndef UFS_DXE_H_
 #define UFS_DXE_H_
 

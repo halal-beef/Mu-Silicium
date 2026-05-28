@@ -1,8 +1,5 @@
 #include "UfsDxe.h"
 
-// vscode
-#include <Uefi/UefiSpec.h>
-
 #ifndef __CAL9830_H__
 #define __CAL9830_H__
 
