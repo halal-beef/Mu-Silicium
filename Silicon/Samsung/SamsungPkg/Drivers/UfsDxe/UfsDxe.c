@@ -1379,6 +1379,28 @@ UfsSwpUnlock (
 }
 
 EFI_STATUS
+UfsInquiry (
+  struct UfsHost *Ufs,
+  UINT8 *Buf
+)
+{
+  ScsiCommandMeta Cmd;
+
+  if(!Buf)
+    return EFI_INVALID_PARAMETER;
+
+  ZeroMem (&Cmd, sizeof (Cmd));
+
+  Cmd.Cdb[0] = SCSI_OP_INQUIRY;
+  Cmd.Cdb[4] = 0xFF;
+
+  Cmd.Buf = Buf;
+  Cmd.DataLen = 0xFF;
+
+  return UfsUtpCmdProcess(Ufs, &Cmd);
+}
+
+EFI_STATUS
 EFIAPI
 InitUfsDriver (
   IN EFI_HANDLE        ImageHandle,
@@ -1386,6 +1408,8 @@ InitUfsDriver (
 {
   EFI_STATUS Status;
   struct UfsHost *Ufs = UfsAllocHost();
+  UINT8 *InquiryBuf = AllocateAlignedPages (1, SIZE_4KB);
+  CHAR8 Product[17];
 
   if (!Ufs) {
     DEBUG((EFI_D_ERROR, "Failed to allocate UFS host\n"));
@@ -1413,6 +1437,15 @@ InitUfsDriver (
   Ufs->DeviceDesc.wManufacturerID &= 0xFF00;
   Ufs->DeviceDesc.wManufacturerID >>= 8;
 
+  Status = UfsInquiry(Ufs, InquiryBuf);
+  if (EFI_ERROR(Status)) {
+    DEBUG((EFI_D_ERROR, "UFS Inquiry failed: %r\n", Status));
+    return Status;
+  }
+
+  CopyMem(Product, &InquiryBuf[16], 16);
+	Product[16] = '\0';
+
   for (UINT32 Lun = 0; Lun < 8; Lun++)
   {
     UINT64 BlkCnt;
@@ -1430,7 +1463,8 @@ InitUfsDriver (
     UfsRequestSense(Ufs, Lun);
 
     UfsReadCapacity(Ufs, Lun, &BlkCnt, &BlkSize);
-    DEBUG ((EFI_D_ERROR, "UFS: Well known lun %d capacity: %llu blocks (%llu MB), block size: %u bytes\n", Lun, BlkCnt, (BlkCnt * BlkSize) / (1024 * 1024), BlkSize));
+    if (Ufs->DeviceDesc.wManufacturerID == 0xCE) // Samsung
+      DEBUG ((EFI_D_ERROR, "UFS: Well known lun[%d]   SAMSUNG %a   %llu MB\n", Lun, Product, (BlkCnt * BlkSize) / (1024 * 1024)));
   }
 
   UfsUtpQueryRetry (Ufs, DESC_R_CONFIG_DESC, 0); // Somehow bypasses the other write protection
