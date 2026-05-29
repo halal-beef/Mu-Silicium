@@ -641,31 +641,6 @@ UfsUtpCmdProcess (
 
 STATIC
 EFI_STATUS
-UfsUtpCmdProcessSwp (
-  struct UfsHost *Ufs,
-  ScsiCommandMeta *Cmd)
-{
-  UfsUtpInit(Ufs, Cmd->Lun);
-  Ufs->ScsiCmd = Cmd;
-  Ufs->Lun = Cmd->Lun;
-
-  UfsWriteCmdUcd(Ufs);
-  UfsMapSg(Ufs);
-  if (UfsWriteUtrd(Ufs, UPIU_TRANSACTION_COMMAND))
-    return EFI_DEVICE_ERROR;
-
-  MemoryFence();
-
-  UfsUtpSend(Ufs, UPIU_TRANSACTION_COMMAND);
-
-  if (UfsUtpWaitResponse(Ufs, UPIU_TRANSACTION_COMMAND))
-    return EFI_TIMEOUT;
-
-  return UfsUtpCheckResult(Ufs);
-}
-
-STATIC
-EFI_STATUS
 UfsUtpNopProcess (struct UfsHost *Ufs)
 {
   UfsUtpInit(Ufs, 0);
@@ -1353,7 +1328,7 @@ ScsiSwpCheck(
 
   UfsRequestSense(Ufs, Lun);
 
-  if(EFI_ERROR(UfsUtpCmdProcessSwp(Ufs, &Cmd)))
+  if(EFI_ERROR(UfsUtpCmdProcess(Ufs, &Cmd)))
   {
     DEBUG((EFI_D_ERROR, "UFS SWP check failed\n"));
   }
@@ -1390,7 +1365,7 @@ UfsSwpUnlock (
   Cmd.DataLen = 0x14;
   Cmd.Lun = Lun;
 
-  if(EFI_ERROR(UfsUtpCmdProcessSwp(Ufs, &Cmd)))
+  if(EFI_ERROR(UfsUtpCmdProcess(Ufs, &Cmd)))
   {
     DEBUG((EFI_D_ERROR, "UFS SWP unlock failed\n"));
     FreeAlignedPages(SwpData, 1);
@@ -1435,6 +1410,9 @@ InitUfsDriver (
     DEBUG ((EFI_D_INFO, "UFS bBootLunEn=0x%x\n", Ufs->Attributes.Array[UPIU_ATTR_ID_BOOTLUNEN]));
   }
 
+  Ufs->DeviceDesc.wManufacturerID &= 0xFF00;
+  Ufs->DeviceDesc.wManufacturerID >>= 8;
+
   for (UINT32 Lun = 0; Lun < 8; Lun++)
   {
     UINT64 BlkCnt;
@@ -1452,7 +1430,7 @@ InitUfsDriver (
     UfsRequestSense(Ufs, Lun);
 
     UfsReadCapacity(Ufs, Lun, &BlkCnt, &BlkSize);
-    DEBUG ((EFI_D_ERROR, "UFS: LUN %d capacity: %llu blocks (%llu MB), block size: %u bytes\n", Lun, BlkCnt, (BlkCnt * BlkSize) / (1024 * 1024), BlkSize));
+    DEBUG ((EFI_D_ERROR, "UFS: Well known lun %d capacity: %llu blocks (%llu MB), block size: %u bytes\n", Lun, BlkCnt, (BlkCnt * BlkSize) / (1024 * 1024), BlkSize));
   }
 
   UfsUtpQueryRetry (Ufs, DESC_R_CONFIG_DESC, 0); // Somehow bypasses the other write protection
@@ -1461,6 +1439,8 @@ InitUfsDriver (
   UINT8 *SwpData = ScsiSwpCheck(Ufs, 1);
 
   UfsSwpUnlock(Ufs, 1, 0, SwpData);
+
+  ScsiSwpCheck(Ufs, 1);
 
   while(1);
 
