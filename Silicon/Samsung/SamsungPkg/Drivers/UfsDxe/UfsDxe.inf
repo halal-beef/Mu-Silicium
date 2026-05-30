@@ -27,5 +27,8 @@
   BaseMemoryLib
   MemoryAllocationLib
 
+[Protocols]
+  gEfiDiskIoProtocolGuid
+
 [Depex]
   TRUE
