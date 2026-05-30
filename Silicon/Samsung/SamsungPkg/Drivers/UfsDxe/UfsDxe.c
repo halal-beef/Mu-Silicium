@@ -5,6 +5,7 @@
 #include <Library/TimerLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
+#include <Library/DevicePathLib.h>
 
 #include "UfsDxe.h"
 #include "Cal9830.h"
@@ -1400,60 +1401,88 @@ UfsInquiry (
   return UfsUtpCmdProcess(Ufs, &Cmd);
 }
 
-STATIC
-EFI_STATUS
-EFIAPI
-UfsDiskIoRead (
-  IN EFI_DISK_IO_PROTOCOL *This,
-  IN UINT32                MediaId,
-  IN UINT64                Offset,
-  IN UINTN                 BufferSize,
-  OUT VOID                *Buffer
-)
+STATIC EFI_STATUS EFIAPI
+UfsReadBlocks (
+  IN  EFI_BLOCK_IO_PROTOCOL *This,
+  IN  UINT32                 MediaId,
+  IN  EFI_LBA                Lba,
+  IN  UINTN                  BufferSize,
+  OUT VOID                  *Buffer)
 {
-  UFS_DISK_IO_PRIVATE *Private = BASE_CR(This, UFS_DISK_IO_PRIVATE, DiskIo);
+  UFS_LUN_DEV *Dev = UFS_LUN_FROM_BLOCKIO(This);
 
-  if (MediaId != Private->MediaId)
-    return EFI_MEDIA_CHANGED;
-  if (Offset % Private->BlockSize || BufferSize % Private->BlockSize)
-    return EFI_INVALID_PARAMETER;
+  if (!Buffer)                       return EFI_INVALID_PARAMETER;
+  if (MediaId != Dev->Media.MediaId) return EFI_MEDIA_CHANGED;
+  if (BufferSize == 0)               return EFI_SUCCESS;
+  if (BufferSize % Dev->Media.BlockSize) return EFI_BAD_BUFFER_SIZE;
 
   return UfsRead(
-    Private->Ufs,
-    Private->Lun,
-    (UINT32)(Offset / Private->BlockSize),
-    BufferSize / Private->BlockSize,
-    Private->BlockSize,
+    Dev->Ufs,
+    Dev->Lun,
+    (UINT32)Lba,
+    BufferSize / Dev->Media.BlockSize,
+    Dev->Media.BlockSize,
     Buffer
   );
 }
 
-STATIC
-EFI_STATUS
-EFIAPI
-UfsDiskIoWrite (
-  IN EFI_DISK_IO_PROTOCOL *This,
-  IN UINT32                MediaId,
-  IN UINT64                Offset,
-  IN UINTN                 BufferSize,
-  IN VOID                 *Buffer
-)
+STATIC EFI_STATUS EFIAPI
+UfsWriteBlocks (
+  IN EFI_BLOCK_IO_PROTOCOL *This,
+  IN UINT32                 MediaId,
+  IN EFI_LBA                Lba,
+  IN UINTN                  BufferSize,
+  IN VOID                  *Buffer)
 {
-  UFS_DISK_IO_PRIVATE *Private = BASE_CR(This, UFS_DISK_IO_PRIVATE, DiskIo);
+  UFS_LUN_DEV *Dev = UFS_LUN_FROM_BLOCKIO(This);
 
-  if (MediaId != Private->MediaId)
-    return EFI_MEDIA_CHANGED;
-  if (Offset % Private->BlockSize || BufferSize % Private->BlockSize)
-    return EFI_INVALID_PARAMETER;
+  if (!Buffer)                       return EFI_INVALID_PARAMETER;
+  if (MediaId != Dev->Media.MediaId) return EFI_MEDIA_CHANGED;
+  if (Dev->Media.ReadOnly)           return EFI_WRITE_PROTECTED;
+  if (BufferSize == 0)               return EFI_SUCCESS;
+  if (BufferSize % Dev->Media.BlockSize) return EFI_BAD_BUFFER_SIZE;
 
   return UfsWrite(
-    Private->Ufs,
-    Private->Lun,
-    (UINT32)(Offset / Private->BlockSize),
-    BufferSize / Private->BlockSize,
-    Private->BlockSize,
+    Dev->Ufs,
+    Dev->Lun,
+    (UINT32)Lba,
+    BufferSize / Dev->Media.BlockSize,
+    Dev->Media.BlockSize,
     Buffer
   );
+}
+
+STATIC EFI_STATUS EFIAPI
+UfsFlushBlocks (IN EFI_BLOCK_IO_PROTOCOL *This)
+{
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS EFIAPI
+UfsBlockReset (
+  IN EFI_BLOCK_IO_PROTOCOL *This,
+  IN BOOLEAN ExtendedVerification
+)
+{
+  return EFI_SUCCESS;
+}
+
+STATIC
+EXYNOS_UFS_DEVICE_PATH *
+UfsBuildDevicePath (UINT8 Lun)
+{
+  EXYNOS_UFS_DEVICE_PATH *Dp = AllocateZeroPool (sizeof (EXYNOS_UFS_DEVICE_PATH));
+  if (!Dp)
+    return NULL;
+
+  Dp->VendorDp.Header.Type    = HARDWARE_DEVICE_PATH;
+  Dp->VendorDp.Header.SubType = HW_VENDOR_DP;
+  SetDevicePathNodeLength (&Dp->VendorDp.Header, sizeof (VENDOR_DEVICE_PATH) + sizeof (UINT8));
+  CopyMem (&Dp->VendorDp.Guid, &gExynosUfsGuid, sizeof (EFI_GUID));
+  Dp->Lun = Lun;
+
+  SetDevicePathEndNode (&Dp->End);
+  return Dp;
 }
 
 EFI_STATUS
@@ -1506,10 +1535,11 @@ InitUfsDriver (
   {
     UINT64 BlkCnt;
     UINT32 BlkSize;
-    UFS_DISK_IO_PRIVATE *Private = AllocateZeroPool(sizeof(UFS_DISK_IO_PRIVATE));
+    UFS_LUN_DEV *Dev = AllocateZeroPool(sizeof(UFS_LUN_DEV));
+    EXYNOS_UFS_DEVICE_PATH *Dp;
     EFI_HANDLE Handle = NULL;
 
-    if (!Private)
+    if (!Dev)
     {
       DEBUG((EFI_D_ERROR, "Failed to allocate UFS disk io struct\n"));
       return EFI_OUT_OF_RESOURCES;
@@ -1535,19 +1565,38 @@ InitUfsDriver (
       continue;
     }
     
-    Private->DiskIo.Revision  = EFI_DISK_IO_PROTOCOL_REVISION;
-    Private->DiskIo.ReadDisk  = UfsDiskIoRead;
-    Private->DiskIo.WriteDisk = UfsDiskIoWrite;
-    Private->Ufs        = Ufs;
-    Private->Lun        = Lun;
-    Private->MediaId    = 1;
-    Private->BlockSize  = BlkSize;
-    Private->BlockCount = BlkCnt;
+    Dev->Signature = UFS_LUN_SIGNATURE;
+    Dev->Ufs = Ufs;
+    Dev->Lun = Lun;
+    Dev->Media.MediaId = 1;
+    Dev->Media.RemovableMedia = FALSE;
+    Dev->Media.MediaPresent = TRUE;
+    Dev->Media.LogicalPartition = FALSE;
+    Dev->Media.ReadOnly = FALSE;
+    Dev->Media.WriteCaching = FALSE;
+    Dev->Media.BlockSize = BlkSize;
+    Dev->Media.IoAlign = 0;
+    Dev->Media.LastBlock = (BlkCnt > 0) ? (BlkCnt - 1) : 0;
+
+    Dev->BlockIo.Revision = EFI_BLOCK_IO_PROTOCOL_REVISION2;
+    Dev->BlockIo.Media = &Dev->Media;
+    Dev->BlockIo.Reset = UfsBlockReset;
+    Dev->BlockIo.ReadBlocks = UfsReadBlocks;
+    Dev->BlockIo.WriteBlocks = UfsWriteBlocks;
+    Dev->BlockIo.FlushBlocks = UfsFlushBlocks;
 
     if (Ufs->DeviceDesc.wManufacturerID == 0xCE) // Samsung
       DEBUG ((EFI_D_ERROR, "UFS Well known lun[%d]   SAMSUNG %a   %llu MB\n", Lun, Product, (BlkCnt * BlkSize) / (1024 * 1024)));
 
-    Status = gBS->InstallMultipleProtocolInterfaces (&Handle, &gEfiDiskIoProtocolGuid, &Private->DiskIo, NULL);
+    Dp = UfsBuildDevicePath((UINT8)Lun);
+    if (!Dp)
+    {
+      FreePool(Dev);
+      continue;
+    }
+
+    Status = gBS->InstallMultipleProtocolInterfaces(&Handle, &gEfiBlockIoProtocolGuid, &Dev->BlockIo, &gEfiDevicePathProtocolGuid, Dp, NULL);
+
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "UFS LUN %d Failed to DiskIO Protocol!\n", Lun));
       ASSERT_EFI_ERROR (Status);
@@ -1566,8 +1615,6 @@ InitUfsDriver (
   UfsSwpUnlock(Ufs, 1, 0, SwpData);
 
   ScsiSwpCheck(Ufs, 1);
-
-  //while(1);
 
   return EFI_SUCCESS;
 }

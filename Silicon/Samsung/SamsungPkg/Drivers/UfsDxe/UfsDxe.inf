@@ -23,12 +23,13 @@
   UefiDriverEntryPoint
   MemoryMapHelperLib
   DebugLib
+  DevicePathLib
   IoLib
   BaseMemoryLib
   MemoryAllocationLib
 
 [Protocols]
-  gEfiDiskIoProtocolGuid
+  gEfiBlockIoProtocolGuid
 
 [Depex]
   TRUE
