@@ -1,4 +1,5 @@
-#include <Protocol/DiskIo.h>
+#include <Protocol/BlockIo.h>
+#include <Protocol/DevicePath.h>
 
 #ifndef UFS_DXE_H_
 #define UFS_DXE_H_
@@ -568,24 +569,37 @@ enum
 };
 
 enum {
-  UTP_NO_DATA_TRANSFER  = 0x00000000,
-  UTP_HOST_TO_DEVICE    = 0x02000000,
-  UTP_DEVICE_TO_HOST    = 0x04000000,
-  UTP_SCSI_COMMAND      = 0x00000000,
-  UTP_NATIVE_UFS_COMMAND= 0x10000000,
+  UTP_NO_DATA_TRANSFER = 0x00000000,
+  UTP_HOST_TO_DEVICE = 0x02000000,
+  UTP_DEVICE_TO_HOST = 0x04000000,
+  UTP_SCSI_COMMAND = 0x00000000,
+  UTP_NATIVE_UFS_COMMAND = 0x10000000,
   UTP_DEVICE_MANAGEMENT = 0x20000000,
-  UTP_REQ_DESC_INT_CMD  = 0x01000000,
+  UTP_REQ_DESC_INT_CMD = 0x01000000,
 };
 
-// DiskIo
+// BlockIo
+#define UFS_LUN_SIGNATURE  SIGNATURE_32('U','F','S','L')
+#define UFS_LUN_FROM_BLOCKIO(a) CR(a, UFS_LUN_DEV, BlockIo, UFS_LUN_SIGNATURE)
+
 typedef struct {
-  EFI_DISK_IO_PROTOCOL DiskIo;
+  VENDOR_DEVICE_PATH        VendorDp;
+  UINT8                     Lun;
+  EFI_DEVICE_PATH_PROTOCOL  End;
+} EXYNOS_UFS_DEVICE_PATH;
+
+STATIC EFI_GUID gExynosUfsGuid = {
+  0x5F2C8E91, 0x7A3D, 0x4B6E,
+  {0x9C, 0x14, 0xF0, 0x2A, 0x68, 0xB7, 0x3D, 0xC1}
+};
+
+typedef struct {
+  UINT32 Signature;
+  EFI_BLOCK_IO_PROTOCOL BlockIo;
+  EFI_BLOCK_IO_MEDIA Media;
   struct UfsHost *Ufs;
   UINT32 Lun;
-  UINT32 MediaId;
-  UINT32 BlockSize;
-  UINT64 BlockCount;
-} UFS_DISK_IO_PRIVATE;
+} UFS_LUN_DEV;
 
 INT32
 UfsSendUicCmd (struct UfsHost *Ufs);

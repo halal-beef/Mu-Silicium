@@ -20,6 +20,7 @@ APRIORI DXE {
 
   INF SamsungPkg/Drivers/UfsDxe/UfsDxe.inf
 
+  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
   INF FatPkg/EnhancedFatDxe/Fat.inf
 
   INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf

@@ -33,6 +33,7 @@
 
   INF SamsungPkg/Drivers/UfsDxe/UfsDxe.inf
 
+  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
   INF FatPkg/EnhancedFatDxe/Fat.inf
 
 !if $(USE_CUSTOM_DISPLAY_DRIVER) == 0
