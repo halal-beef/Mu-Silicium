@@ -1400,6 +1400,62 @@ UfsInquiry (
   return UfsUtpCmdProcess(Ufs, &Cmd);
 }
 
+STATIC
+EFI_STATUS
+EFIAPI
+UfsDiskIoRead (
+  IN EFI_DISK_IO_PROTOCOL *This,
+  IN UINT32                MediaId,
+  IN UINT64                Offset,
+  IN UINTN                 BufferSize,
+  OUT VOID                *Buffer
+)
+{
+  UFS_DISK_IO_PRIVATE *Private = BASE_CR(This, UFS_DISK_IO_PRIVATE, DiskIo);
+
+  if (MediaId != Private->MediaId)
+    return EFI_MEDIA_CHANGED;
+  if (Offset % Private->BlockSize || BufferSize % Private->BlockSize)
+    return EFI_INVALID_PARAMETER;
+
+  return UfsRead(
+    Private->Ufs,
+    Private->Lun,
+    (UINT32)(Offset / Private->BlockSize),
+    BufferSize / Private->BlockSize,
+    Private->BlockSize,
+    Buffer
+  );
+}
+
+STATIC
+EFI_STATUS
+EFIAPI
+UfsDiskIoWrite (
+  IN EFI_DISK_IO_PROTOCOL *This,
+  IN UINT32                MediaId,
+  IN UINT64                Offset,
+  IN UINTN                 BufferSize,
+  IN VOID                 *Buffer
+)
+{
+  UFS_DISK_IO_PRIVATE *Private = BASE_CR(This, UFS_DISK_IO_PRIVATE, DiskIo);
+
+  if (MediaId != Private->MediaId)
+    return EFI_MEDIA_CHANGED;
+  if (Offset % Private->BlockSize || BufferSize % Private->BlockSize)
+    return EFI_INVALID_PARAMETER;
+
+  return UfsWrite(
+    Private->Ufs,
+    Private->Lun,
+    (UINT32)(Offset / Private->BlockSize),
+    BufferSize / Private->BlockSize,
+    Private->BlockSize,
+    Buffer
+  );
+}
+
 EFI_STATUS
 EFIAPI
 InitUfsDriver (
@@ -1450,21 +1506,56 @@ InitUfsDriver (
   {
     UINT64 BlkCnt;
     UINT32 BlkSize;
+    UFS_DISK_IO_PRIVATE *Private = AllocateZeroPool(sizeof(UFS_DISK_IO_PRIVATE));
+    EFI_HANDLE Handle = NULL;
 
-    gQueryParams[DESC_R_UNIT_DESC][3] = (UINT8)Lun;
-    if (UfsUtpQueryRetry (Ufs, DESC_R_UNIT_DESC, Lun)) {
-      DEBUG((EFI_D_ERROR, "UFS: LUN %d unit desc read failed\n", Lun));
+    if (!Private)
+    {
+      DEBUG((EFI_D_ERROR, "Failed to allocate UFS disk io struct\n"));
+      return EFI_OUT_OF_RESOURCES;
     }
 
-    if (!Ufs->UnitDesc[Lun].bLUEnable) {
+    gQueryParams[DESC_R_UNIT_DESC][3] = (UINT8)Lun;
+    if (UfsUtpQueryRetry (Ufs, DESC_R_UNIT_DESC, Lun))
+    {
+      DEBUG((EFI_D_ERROR, "UFS LUN %d unit desc read failed\n", Lun));
+    }
+
+    if (!Ufs->UnitDesc[Lun].bLUEnable)
+    {
       continue;
     }
 
     UfsRequestSense(Ufs, Lun);
 
-    UfsReadCapacity(Ufs, Lun, &BlkCnt, &BlkSize);
+    Status = UfsReadCapacity(Ufs, Lun, &BlkCnt, &BlkSize);
+    if (EFI_ERROR(Status))
+    {
+      DEBUG((EFI_D_ERROR, "UFS LUN %d read capacity failed\n", Lun));
+      continue;
+    }
+    
+    Private->DiskIo.Revision  = EFI_DISK_IO_PROTOCOL_REVISION;
+    Private->DiskIo.ReadDisk  = UfsDiskIoRead;
+    Private->DiskIo.WriteDisk = UfsDiskIoWrite;
+    Private->Ufs        = Ufs;
+    Private->Lun        = Lun;
+    Private->MediaId    = 1;
+    Private->BlockSize  = BlkSize;
+    Private->BlockCount = BlkCnt;
+
     if (Ufs->DeviceDesc.wManufacturerID == 0xCE) // Samsung
-      DEBUG ((EFI_D_ERROR, "UFS: Well known lun[%d]   SAMSUNG %a   %llu MB\n", Lun, Product, (BlkCnt * BlkSize) / (1024 * 1024)));
+      DEBUG ((EFI_D_ERROR, "UFS Well known lun[%d]   SAMSUNG %a   %llu MB\n", Lun, Product, (BlkCnt * BlkSize) / (1024 * 1024)));
+
+    Status = gBS->InstallMultipleProtocolInterfaces (&Handle, &gEfiDiskIoProtocolGuid, &Private->DiskIo, NULL);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((EFI_D_ERROR, "UFS LUN %d Failed to DiskIO Protocol!\n", Lun));
+      ASSERT_EFI_ERROR (Status);
+    }
+    else
+    {
+      DEBUG ((EFI_D_ERROR, "UFS LUN %d DiskIO Protocol installed\n", Lun));
+    }
   }
 
   UfsUtpQueryRetry (Ufs, DESC_R_CONFIG_DESC, 0); // Somehow bypasses the other write protection
@@ -1476,7 +1567,7 @@ InitUfsDriver (
 
   ScsiSwpCheck(Ufs, 1);
 
-  while(1);
+  //while(1);
 
   return EFI_SUCCESS;
 }

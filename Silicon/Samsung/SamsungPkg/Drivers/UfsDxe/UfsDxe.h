@@ -1,3 +1,5 @@
+#include <Protocol/DiskIo.h>
+
 #ifndef UFS_DXE_H_
 #define UFS_DXE_H_
 
@@ -574,6 +576,16 @@ enum {
   UTP_DEVICE_MANAGEMENT = 0x20000000,
   UTP_REQ_DESC_INT_CMD  = 0x01000000,
 };
+
+// DiskIo
+typedef struct {
+  EFI_DISK_IO_PROTOCOL DiskIo;
+  struct UfsHost *Ufs;
+  UINT32 Lun;
+  UINT32 MediaId;
+  UINT32 BlockSize;
+  UINT64 BlockCount;
+} UFS_DISK_IO_PRIVATE;
 
 INT32
 UfsSendUicCmd (struct UfsHost *Ufs);
