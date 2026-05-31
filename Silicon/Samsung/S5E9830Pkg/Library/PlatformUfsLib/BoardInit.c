@@ -3,6 +3,10 @@
 #include <Library/IoLib.h>
 #include <Library/UfsHostBridge.h>
 
+#include <Protocol/EfiGpio.h>
+
+#include <Uefi.h>
+
 #define WARM_RESET                  (1U << 28)
 #define LITTLE_WDT_RESET            (1U << 24)
 #define EXYNOS9830_EDPCSR_DUMP_EN   (1U << 0)
@@ -16,6 +20,8 @@
 #define MUX_CLKCMU_UFS_EMBD_CON    0x1A331098UL
 #define DIV_CLKCMU_UFS_EMBD_MUX    0x1A331890UL
 #define UFS_CLKCMU_TIMEOUT         100
+
+STATIC EFI_EXYNOS_GPIO_PROTOCOL *mGpioProtocol;
 
 STATIC
 VOID
@@ -43,9 +49,16 @@ UfsSetUniProClk (struct UfsHost *Ufs)
 EFI_STATUS
 UfsBoardInit (struct UfsHost *Ufs)
 {
-  UINT32 reg;
+  UINT32 Register;
   UINT32 rst_stat = MmioRead32(0x15860000 + 0x404);
   UINT32 dfd_en = MmioRead32(0x15860000 + 0x500);
+  EFI_STATUS Status;
+
+  Status = gBS->LocateProtocol (&gEfiExynosGpioProtocolGuid, NULL, (VOID *)&mGpioProtocol);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to Locate GPIO Protocol! Status = %r\n", Status));
+    return Status;
+  }
 
   DEBUG ((EFI_D_INFO, "UFS: Board init\n"));
 
@@ -68,27 +81,43 @@ UfsBoardInit (struct UfsHost *Ufs)
   // TODO : Hook this in with the actual GPIO driver, instead of direct memory writes.
 
   /* GPIO: RST_N and REFCLK */
-  reg  = *(volatile UINT32 *)0x13040048UL;
-  reg &= ~0xFFU;
-  *(volatile UINT32 *)0x13040048UL = reg;
+  Status = mGpioProtocol->SetPull(2, GPIO_BANK_ID_F, 0, GPIO_PULL_NONE);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to set GPIO pull for RST_N! Status = %r\n", Status));
+    return Status;
+  }
 
-  reg  = *(volatile UINT32 *)0x13040040UL;
-  reg &= ~0xFFU;
-  reg |= 0x22U;
-  *(volatile UINT32 *)0x13040040UL = reg;
+  Status = mGpioProtocol->SetPull(2, GPIO_BANK_ID_F, 1, GPIO_PULL_NONE);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to set GPIO pull for REFCLK! Status = %r\n", Status));
+    return Status;
+  }
+
+  Status = mGpioProtocol->ConfigurePin(2, GPIO_BANK_ID_F, 0, 2);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to configure GPIO pin for RST_N! Status = %r\n", Status));
+    return Status;
+  }
+
+  Status = mGpioProtocol->ConfigurePin(2, GPIO_BANK_ID_F, 1, 2);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to configure GPIO pin for REFCLK! Status = %r\n", Status));
+    return Status;
+  }
 
   /* XBOOTLDO GPG1[0] */
-  reg  = *(volatile UINT32 *)0x107300C0UL;
-  reg &= ~0x7U;
-  reg |= 0x1U;
-  *(volatile UINT32 *)0x107300C0UL = reg;
+  Status = mGpioProtocol->ConfigurePin(1, GPIO_BANK_ID_G, 0, GPIO_OUTPUT);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to configure GPG1-0! Status = %r\n", Status));
+    return Status;
+  }
 
   /* IO coherency in SYSREG (skip if warm/wdt reset with DFD) */
-  if (!((rst_stat & (WARM_RESET | LITTLE_WDT_RESET)) &&
-        (dfd_en & EXYNOS9830_EDPCSR_DUMP_EN))) {
-    reg  = *(volatile UINT32 *)0x13020700UL;
-    reg |= ((1U << 22) | (1U << 23));
-    *(volatile UINT32 *)0x13020700UL = reg;
+  if (!((rst_stat & (WARM_RESET | LITTLE_WDT_RESET)) && (dfd_en & EXYNOS9830_EDPCSR_DUMP_EN)))
+  {
+    Register = MmioRead32(0x13020700);
+    Register |= (BIT22 | BIT23);
+    MmioWrite32(0x13020700, Register);
   }
 
   return EFI_SUCCESS;
