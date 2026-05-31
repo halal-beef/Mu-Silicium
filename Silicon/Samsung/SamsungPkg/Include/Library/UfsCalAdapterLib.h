@@ -1,8 +1,6 @@
 #ifndef __UFS_CAL_ADAPTER_LIB_H__
 #define __UFS_CAL_ADAPTER_LIB_H__
 
-#include <Uefi.h>
-
 typedef enum {
   UFS_CAL_NO_ERROR = 0,
   UFS_CAL_TIMEOUT,
