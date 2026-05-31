@@ -10,6 +10,8 @@
 
 #include <Library/PlatformUfsLib.h>
 
+#include <Protocol/EfiChipData.h>
+
 #include "UfsDxe.h"
 
 UINT8 gQueryParams[][5] = {
@@ -38,6 +40,8 @@ UINT8 gQueryParams[][5] = {
   /* ATTR_R_REFCLKFREQ */
   {UFS_STD_READ_REQ,     UPIU_QUERY_OPCODE_READ_ATTR,    UPIU_ATTR_ID_REFCLKFREQ,     0, 0},
 };
+
+STATIC EFI_CHIP_DATA_PROTOCOL *mChipDataProtocol;
 
 STATIC
 VOID
@@ -169,10 +173,14 @@ static
 EFI_STATUS
 UfsInitCal (struct UfsHost *Ufs)
 {
+  UINT32 ChipRevision[2];
+
+  mChipDataProtocol->GetRevision(ChipRevision);
+
   Ufs->CalParam->Host = Ufs;
   Ufs->CalParam->Board = UfsCalGetTargetBoard();
-  // TODO: Derive from ChipInfo driver.
-  Ufs->CalParam->EvtVer  = (MmioRead32(0x10000010UL) >> 20) & 0xf;
+  Ufs->CalParam->EvtVer = ChipRevision[0] & 0xF;
+
   DEBUG((EFI_D_INFO, "UFS EVT version %d\n", Ufs->CalParam->EvtVer));
 
   if (UfsCalInit(Ufs->CalParam) != UFS_CAL_NO_ERROR) {
@@ -184,9 +192,7 @@ UfsInitCal (struct UfsHost *Ufs)
 
 STATIC
 VOID
-UfsDeviceReset (
-  struct UfsHost *Ufs
-)
+UfsDeviceReset (struct UfsHost *Ufs)
 {
   MmioWrite32((UINTN)(Ufs->VsAddr + VS_GPIO_OUT), 0);
   MicroSecondDelay(5);
@@ -1124,12 +1130,19 @@ UfsInitHost (
   struct UfsHost *Ufs
 )
 {
+  EFI_STATUS Status;
+  
   DEBUG((DEBUG_INFO, "UFS Host init\n"));
 
 	Ufs->UfsCmdTimeout = UTP_CMD_TIMEOUT;
 	Ufs->UicCmdTimeout = UIC_CMD_TIMEOUT;
 
-  UfsBoardInit(Ufs);
+  Status = UfsBoardInit(Ufs);
+  if (EFI_ERROR(Status))
+  {
+    DEBUG((EFI_D_ERROR, "UFS board init failed\n"));
+    ASSERT_EFI_ERROR(Status);
+  }
   return UfsInitCal(Ufs);
 }
 
@@ -1495,6 +1508,12 @@ InitUfsDriver (
   struct UfsHost *Ufs = UfsAllocHost();
   UINT8 *InquiryBuf = AllocateAlignedPages (1, SIZE_4KB);
   CHAR8 Product[17];
+
+  Status = gBS->LocateProtocol (&gEfiChipDataProtocolGuid, NULL, (VOID *)&mChipDataProtocol);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to Locate Chip Data Protocol! Status = %r\n", Status));
+    return Status;
+  }
 
   if (!Ufs) {
     DEBUG((EFI_D_ERROR, "Failed to allocate UFS host\n"));

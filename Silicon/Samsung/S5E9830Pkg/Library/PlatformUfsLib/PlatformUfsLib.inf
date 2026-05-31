@@ -20,3 +20,6 @@
   TimerLib
   UefiBootServicesTableLib
   UfsCalAdapterLib
+
+[Protocols]
+  gEfiExynosGpioProtocolGuid
