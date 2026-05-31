@@ -6,10 +6,11 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/DevicePathLib.h>
+#include <Library/UfsHostBridge.h>
+
+#include <Library/PlatformUfsLib.h>
 
 #include "UfsDxe.h"
-#include "Cal9830.h"
-#include "BoardInit.h"
 
 UINT8 gQueryParams[][5] = {
   /* [0] unused */
@@ -169,7 +170,7 @@ EFI_STATUS
 UfsInitCal (struct UfsHost *Ufs)
 {
   Ufs->CalParam->Host = Ufs;
-  Ufs->CalParam->Board = BRD_UNIV;
+  Ufs->CalParam->Board = UfsCalGetTargetBoard();
   // TODO: Derive from ChipInfo driver.
   Ufs->CalParam->EvtVer  = (MmioRead32(0x10000010UL) >> 20) & 0xf;
   DEBUG((EFI_D_INFO, "UFS EVT version %d\n", Ufs->CalParam->EvtVer));
@@ -1128,7 +1129,6 @@ UfsInitHost (
 	Ufs->UfsCmdTimeout = UTP_CMD_TIMEOUT;
 	Ufs->UicCmdTimeout = UIC_CMD_TIMEOUT;
 
-  // TODO: Make SoC lib
   UfsBoardInit(Ufs);
   return UfsInitCal(Ufs);
 }

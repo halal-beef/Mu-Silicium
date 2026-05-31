@@ -22,6 +22,12 @@
   #
   ArmSmcLib|SamsungPkg/Library/ArmSmcLib/ArmSmcLib.inf
 
+  #
+  # Custom Libraries
+  #
+  PlatformUfsLib|SamsungPkg/Library/PlatformUfsLibNull/PlatformUfsLibNull.inf
+  UfsCalAdapterLib|SamsungPkg/Library/UfsCalAdapterLib/UfsCalAdapterLib.inf
+
 [Components]
   #
   # SMBIOS

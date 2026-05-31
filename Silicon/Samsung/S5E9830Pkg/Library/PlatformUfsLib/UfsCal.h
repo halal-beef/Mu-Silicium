@@ -1,11 +1,8 @@
-#include "UfsDxe.h"
+#include <Library/UfsHostBridge.h>
+#include <Library/UfsCalAdapterLib.h>
 
-#ifndef __CAL9830_H__
-#define __CAL9830_H__
-
-/* UFSHCI */
-#define UIC_ARG_MIB_SEL(attr, sel) ((((attr) & 0xFFFF) << 16) | ((sel) & 0xFFFF))
-#define UIC_ARG_MIB(attr) UIC_ARG_MIB_SEL(attr, 0)
+#ifndef __UFS_CAL_H__
+#define __UFS_CAL_H__
 
 #define IS_PWR_MODE_HS(m) (((m) == FAST_MODE) || ((m) == FASTAUTO_MODE))
 #define IS_PWR_MODE_PWM(m) (((m) == SLOW_MODE) || ((m) == SLOWAUTO_MODE))
@@ -147,4 +144,4 @@ UfsCalError UfsCalPreLink (struct UfsCalParam *p);
 UfsCalError UfsCalPostLink (struct UfsCalParam *p);
 UfsCalError UfsCalPrePmc (struct UfsCalParam *p);
 UfsCalError UfsCalPostPmc (struct UfsCalParam *p);
-#endif /* __CAL9830_H__ */
+#endif /* __UFS_CAL_H__ */

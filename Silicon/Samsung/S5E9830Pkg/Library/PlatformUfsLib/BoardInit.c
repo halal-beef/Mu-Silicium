@@ -1,8 +1,7 @@
 #include <Library/DebugLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/IoLib.h>
-
-#include "UfsDxe.h"
+#include <Library/UfsHostBridge.h>
 
 #define WARM_RESET                  (1U << 28)
 #define LITTLE_WDT_RESET            (1U << 24)
