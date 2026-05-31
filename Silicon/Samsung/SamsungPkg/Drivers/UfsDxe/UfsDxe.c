@@ -1141,7 +1141,7 @@ UfsInitHost (
   if (EFI_ERROR(Status))
   {
     DEBUG((EFI_D_ERROR, "UFS board init failed\n"));
-    ASSERT_EFI_ERROR(Status);
+    return Status;
   }
   return UfsInitCal(Ufs);
 }

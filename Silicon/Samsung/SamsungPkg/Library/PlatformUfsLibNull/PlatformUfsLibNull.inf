@@ -8,6 +8,7 @@
 
 [Sources]
   PlatformUfsLibNull.c
+  UfsCalNull.c
 
 [Packages]
   MdePkg/MdePkg.dec

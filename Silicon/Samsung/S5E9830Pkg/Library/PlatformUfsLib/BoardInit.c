@@ -33,6 +33,9 @@
 #define EXYNOS9830_GPG1_BASE           (EXYNOS9830_PERIC1_BASE + 0x00C0)
 #define EXYNOS9830_GPG1_DAT            (EXYNOS9830_GPG1_BASE + 0x0004)
 
+#define EXYNOS9830_SYSREG_HSI1_BASE    0x13020000
+#define EXYNOS9830_SYSREG_HSI1_IOCOHERENCY (EXYNOS9830_SYSREG_HSI1_BASE + 0x700)
+
 STATIC EFI_EXYNOS_GPIO_PROTOCOL *mGpioProtocol;
 
 STATIC
@@ -127,9 +130,9 @@ UfsBoardInit (struct UfsHost *Ufs)
   /* IO coherency in SYSREG (skip if warm/wdt reset with DFD) */
   if (!((rst_stat & (WARM_RESET | LITTLE_WDT_RESET)) && (dfd_en & EXYNOS9830_EDPCSR_DUMP_EN)))
   {
-    Register = MmioRead32(0x13020700);
+    Register = MmioRead32(EXYNOS9830_SYSREG_HSI1_IOCOHERENCY);
     Register |= (BIT22 | BIT23);
-    MmioWrite32(0x13020700, Register);
+    MmioWrite32(EXYNOS9830_SYSREG_HSI1_IOCOHERENCY, Register);
   }
 
   return EFI_SUCCESS;
