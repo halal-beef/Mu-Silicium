@@ -1520,8 +1520,6 @@ InitUfsDriver (
     ASSERT(FALSE);
   }
 
-  DEBUG((EFI_D_ERROR, "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"));
-
   Status = UfsInitHost(Ufs);
   if (EFI_ERROR(Status)) {
     DEBUG((EFI_D_ERROR, "Failed to initialize UFS host\n"));
