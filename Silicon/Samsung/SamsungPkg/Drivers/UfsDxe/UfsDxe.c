@@ -1315,105 +1315,6 @@ UfsWrite (
   return EFI_SUCCESS;
 }
 
-UINT8 *
-ScsiSwpCheck(
-  struct UfsHost *Ufs,
-  UINT32 Lun
-)
-{
-  ScsiCommandMeta Cmd;
-  UINT8 *Buf;
-
-  Buf = AllocateAlignedPages (1, SIZE_4KB);
-  if (!Buf)
-    return 0;
-
-  ZeroMem (Buf, SIZE_4KB);
-
-  ZeroMem (&Cmd, sizeof (Cmd));
-  Cmd.Cdb[0] = SCSI_MODE_SEN10;
-  Cmd.Cdb[1] = 0x08;
-  Cmd.Cdb[2] = 0x0A;
-  Cmd.Cdb[8] = 0x14;
-
-  Cmd.Buf = Buf;
-  Cmd.DataLen = 0x14;
-  Cmd.Lun = Lun;
-
-  UfsRequestSense(Ufs, Lun);
-
-  if(EFI_ERROR(UfsUtpCmdProcess(Ufs, &Cmd)))
-  {
-    DEBUG((EFI_D_ERROR, "UFS SWP check failed\n"));
-  }
-  
-  if (!!(Buf[12] & 0x08))
-  	DEBUG((EFI_D_ERROR, "UFS SWP check lun%d SWP=Enabled\n", Lun));
-  else
-    DEBUG((EFI_D_ERROR, "UFS SWP check lun%d SWP=Disabled\n", Lun));
-
-  return Buf;
-}
-
-EFI_STATUS
-UfsSwpUnlock (
-  struct UfsHost *Ufs,
-  UINT32 Lun,
-  UINT32 Set,
-  UINT8 *SwpData
-)
-{
-  ScsiCommandMeta Cmd;
-
-  if (!SwpData)
-    return EFI_INVALID_PARAMETER;
-
-  SwpData[12] &= ~0x08; // Clear SWP bit
-
-  ZeroMem (&Cmd, sizeof (Cmd));
-  Cmd.Cdb[0] = SCSI_MODE_SEL10;
-  Cmd.Cdb[1] = (1 << 4) |  1;
-  Cmd.Cdb[8] = 0x14;
-
-  Cmd.Buf = SwpData;
-  Cmd.DataLen = 0x14;
-  Cmd.Lun = Lun;
-
-  if(EFI_ERROR(UfsUtpCmdProcess(Ufs, &Cmd)))
-  {
-    DEBUG((EFI_D_ERROR, "UFS SWP unlock failed\n"));
-    FreeAlignedPages(SwpData, 1);
-    return EFI_DEVICE_ERROR;
-  }
-  
-  DEBUG((EFI_D_ERROR, "UFS SWP unlock lun%d success\n", Lun));
-
-  FreeAlignedPages(SwpData, 1);
-  return EFI_SUCCESS;
-}
-
-EFI_STATUS
-UfsInquiry (
-  struct UfsHost *Ufs,
-  UINT8 *Buf
-)
-{
-  ScsiCommandMeta Cmd;
-
-  if(!Buf)
-    return EFI_INVALID_PARAMETER;
-
-  ZeroMem (&Cmd, sizeof (Cmd));
-
-  Cmd.Cdb[0] = SCSI_OP_INQUIRY;
-  Cmd.Cdb[4] = 0xFF;
-
-  Cmd.Buf = Buf;
-  Cmd.DataLen = 0xFF;
-
-  return UfsUtpCmdProcess(Ufs, &Cmd);
-}
-
 STATIC EFI_STATUS EFIAPI
 UfsReadBlocks (
   IN  EFI_BLOCK_IO_PROTOCOL *This,
@@ -1506,8 +1407,6 @@ InitUfsDriver (
 {
   EFI_STATUS Status;
   struct UfsHost *Ufs = UfsAllocHost();
-  UINT8 *InquiryBuf = AllocateAlignedPages (1, SIZE_4KB);
-  CHAR8 Product[17];
 
   Status = gBS->LocateProtocol (&gEfiChipDataProtocolGuid, NULL, (VOID *)&mChipDataProtocol);
   if (EFI_ERROR (Status)) {
@@ -1536,17 +1435,9 @@ InitUfsDriver (
     DEBUG ((EFI_D_INFO, "UFS bBootLunEn=0x%x\n", Ufs->Attributes.Array[UPIU_ATTR_ID_BOOTLUNEN]));
   }
 
+  // Fixup manufacturer ID
   Ufs->DeviceDesc.wManufacturerID &= 0xFF00;
   Ufs->DeviceDesc.wManufacturerID >>= 8;
-
-  Status = UfsInquiry(Ufs, InquiryBuf);
-  if (EFI_ERROR(Status)) {
-    DEBUG((EFI_D_ERROR, "UFS Inquiry failed: %r\n", Status));
-    return Status;
-  }
-
-  CopyMem(Product, &InquiryBuf[16], 16);
-	Product[16] = '\0';
 
   for (UINT32 Lun = 0; Lun < 8; Lun++)
   {
@@ -1602,8 +1493,7 @@ InitUfsDriver (
     Dev->BlockIo.WriteBlocks = UfsWriteBlocks;
     Dev->BlockIo.FlushBlocks = UfsFlushBlocks;
 
-    if (Ufs->DeviceDesc.wManufacturerID == 0xCE) // Samsung
-      DEBUG ((EFI_D_ERROR, "UFS Well known lun[%d]   SAMSUNG %a   %llu MB\n", Lun, Product, (BlkCnt * BlkSize) / (1024 * 1024)));
+    DEBUG ((EFI_D_INFO, "UFS Well known lun[%d]   %llu MB\n", Lun, (BlkCnt * BlkSize) / (1024 * 1024)));
 
     Dp = UfsBuildDevicePath((UINT8)Lun);
     if (!Dp)
@@ -1623,15 +1513,6 @@ InitUfsDriver (
       DEBUG ((EFI_D_ERROR, "UFS LUN %d DiskIO Protocol installed\n", Lun));
     }
   }
-
-  UfsUtpQueryRetry (Ufs, DESC_R_CONFIG_DESC, 0); // Somehow bypasses the other write protection
-
-  ScsiSwpCheck(Ufs, 0);
-  UINT8 *SwpData = ScsiSwpCheck(Ufs, 1);
-
-  UfsSwpUnlock(Ufs, 1, 0, SwpData);
-
-  ScsiSwpCheck(Ufs, 1);
 
   return EFI_SUCCESS;
 }
