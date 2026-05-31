@@ -5,19 +5,33 @@
 
 #include <Protocol/EfiGpio.h>
 
-#define WARM_RESET                  (1U << 28)
-#define LITTLE_WDT_RESET            (1U << 24)
-#define EXYNOS9830_EDPCSR_DUMP_EN   (1U << 0)
+#define WARM_RESET                     (1U << 28)
+#define LITTLE_WDT_RESET               (1U << 24)
+#define EXYNOS9830_EDPCSR_DUMP_EN      (1U << 0)
 
-#define UFS_SCLK                    166000000UL
-#define CNT_VAL_1US_MASK            0x3FFU
-#define UFSHCI_VS_1US_TO_CNT_VAL    0x110CU
-#define UFSHCI_VS_UFSHCI_V2P1_CTRL  0x118CU
-#define IA_TICK_SEL                 (1U << 16)
+#define UFS_SCLK                       166000000UL
+#define CNT_VAL_1US_MASK               0x3FFU
+#define UFSHCI_VS_1US_TO_CNT_VAL       0x110CU
+#define UFSHCI_VS_UFSHCI_V2P1_CTRL     0x118CU
+#define IA_TICK_SEL                    (1U << 16)
 
-#define MUX_CLKCMU_UFS_EMBD_CON    0x1A331098UL
-#define DIV_CLKCMU_UFS_EMBD_MUX    0x1A331890UL
-#define UFS_CLKCMU_TIMEOUT         100
+#define MUX_CLKCMU_UFS_EMBD_CON        0x1A331098UL
+#define DIV_CLKCMU_UFS_EMBD_MUX        0x1A331890UL
+#define UFS_CLKCMU_TIMEOUT             100
+
+#define EXYNOS9830_UFS_BASE            0x13100000
+#define EXYNOS9830_UFS_VS_BASE         (EXYNOS9830_UFS_BASE + 0x1100)
+#define EXYNOS9830_UNIPRO_BASE         (EXYNOS9830_UFS_BASE + 0x8000)
+#define EXYNOS9830_PHY_PMA_BASE        (EXYNOS9830_UFS_BASE + 0x4000)
+
+#define EXYNOS9830_PMU_BASE            0x15860000
+#define EXYNOS9830_PMU_RST_STAT        (EXYNOS9830_PMU_BASE + 0x404)
+#define EXYNOS9830_PMU_SEQUENCER       (EXYNOS9830_PMU_BASE + 0x500)
+#define EXYNOS9830_PMU_UFS_PHY_CONTROL (EXYNOS9830_PMU_BASE + 0x724)
+
+#define EXYNOS9830_PERIC1_BASE         0x10730000
+#define EXYNOS9830_GPG1_BASE           (EXYNOS9830_PERIC1_BASE + 0x00C0)
+#define EXYNOS9830_GPG1_DAT            (EXYNOS9830_GPG1_BASE + 0x0004)
 
 STATIC EFI_EXYNOS_GPIO_PROTOCOL *mGpioProtocol;
 
@@ -48,8 +62,8 @@ EFI_STATUS
 UfsBoardInit (struct UfsHost *Ufs)
 {
   UINT32 Register;
-  UINT32 rst_stat = MmioRead32(0x15860000 + 0x404);
-  UINT32 dfd_en = MmioRead32(0x15860000 + 0x500);
+  UINT32 rst_stat = MmioRead32(EXYNOS9830_PMU_RST_STAT);
+  UINT32 dfd_en = MmioRead32(EXYNOS9830_PMU_SEQUENCER);
   EFI_STATUS Status;
 
   Status = gBS->LocateProtocol (&gEfiExynosGpioProtocolGuid, NULL, (VOID *)&mGpioProtocol);
@@ -61,15 +75,15 @@ UfsBoardInit (struct UfsHost *Ufs)
   DEBUG ((EFI_D_INFO, "UFS: Board init\n"));
 
   /* UFS Addrs */
-  Ufs->IoAddr = (VOID *)(UINTN)0x13100000;
-  Ufs->VsAddr = (VOID *)(UINTN)(0x13100000 + 0x1100);
-  Ufs->UniProAddr = (VOID *)(UINTN)0x13180000;
-  Ufs->PhyPma = (VOID *)(UINTN)(0x13100000 + 0x4000);
+  Ufs->IoAddr = (VOID *)(UINTN)EXYNOS9830_UFS_BASE;
+  Ufs->VsAddr = (VOID *)(UINTN)EXYNOS9830_UFS_VS_BASE;
+  Ufs->UniProAddr = (VOID *)(UINTN)EXYNOS9830_UNIPRO_BASE;
+  Ufs->PhyPma = (VOID *)(UINTN)EXYNOS9830_PHY_PMA_BASE;
 
   /* Power / PHY isolation addresses */
-  Ufs->DevPwrAddr = (VOID *)(UINTN)(0x10730000UL + 0xC4);
+  Ufs->DevPwrAddr = (VOID *)(UINTN)EXYNOS9830_GPG1_DAT;
   Ufs->DevPwrShift = 0;
-  Ufs->PhyIsoAddr = (VOID *)(UINTN)(0x15860000UL + 0x724);
+  Ufs->PhyIsoAddr = (VOID *)(UINTN)EXYNOS9830_PMU_UFS_PHY_CONTROL;
 
   Ufs->MclkRate = 166 * 1000 * 1000;
   Ufs->GearMode = 4;
