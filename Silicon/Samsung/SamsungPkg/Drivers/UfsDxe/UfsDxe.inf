@@ -7,9 +7,6 @@
   ENTRY_POINT                    = InitUfsDriver
 
 [Sources]
-  CalAdapter.c
-  Cal9830.c
-  BoardInit.c
   UfsDxe.c
 
 [Packages]
@@ -22,6 +19,8 @@
   UefiBootServicesTableLib
   UefiDriverEntryPoint
   MemoryMapHelperLib
+  PlatformUfsLib
+  UfsCalAdapterLib
   DebugLib
   DevicePathLib
   IoLib

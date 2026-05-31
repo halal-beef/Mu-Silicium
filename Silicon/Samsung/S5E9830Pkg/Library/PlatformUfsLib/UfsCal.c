@@ -1,9 +1,8 @@
 #include <Library/DebugLib.h>
 #include <Library/TimerLib.h>
+#include <Library/UfsCalAdapterLib.h>
 
-#include "CalAdapter.h"
-#include "Cal9830.h"
-#include "UfsDxe.h"
+#include "UfsCal.h"
 
 static struct UfsCalParam  *ufs_cal[NUM_OF_UFS_HOST];
 static unsigned long ufs_cal_lock_timeout = 0xFFFFFFFF;
@@ -525,6 +524,11 @@ UfsCalError UfsCalPreLink (struct UfsCalParam *p)
   }
 
   return ufs_cal_config_uic (p, cfg, NULL);
+}
+
+UINT8 UfsCalGetTargetBoard (VOID)
+{
+  return BRD_UNIV;
 }
 
 UfsCalError UfsCalInit (struct UfsCalParam *p)
