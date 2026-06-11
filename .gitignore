@@ -1,5 +1,6 @@
 Build
 Conf
+uuid
 bootpayload.bin
 Mu-*.*
 __pycache__
