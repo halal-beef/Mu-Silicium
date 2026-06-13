@@ -27,7 +27,7 @@ EFI_STATUS
 
   @return EFI_SUCCESS                      - The Data was Read Successfully.
   @return EFI_NOT_FOUND                    - The Bus does not Exist.
-  @return EFI_NOT_READY                    - The Bus isn't Init yet.
+  @return EFI_NOT_READY                    - The Bus isn't initialised yet.
   ...
 **/
 typedef
@@ -49,7 +49,7 @@ EFI_STATUS
 
   @return EFI_SUCCESS                      - The Data was Read Successfully.
   @return EFI_NOT_FOUND                    - The Bus does not Exist.
-  @return EFI_NOT_READY                    - The Bus isn't Init yet.
+  @return EFI_NOT_READY                    - The Bus isn't initialised yet.
   ...
 **/
 typedef
@@ -67,11 +67,11 @@ EFI_STATUS
   @param[in]  BusNumber                    - The Bus Number.
   @param[in]  SlaveAddr                    - The Slave Address.
   @param[in]  SlaveReg                     - The Slave Register.
-  @param[out] Data                         - The Data.
+  @param[in] pData                         - The Pointer to data.
 
   @return EFI_SUCCESS                      - The Data was Read Successfully.
   @return EFI_NOT_FOUND                    - The Bus does not Exist.
-  @return EFI_NOT_READY                    - The Bus isn't Init yet.
+  @return EFI_NOT_READY                    - The Bus isn't initialised yet.
   ...
 **/
 typedef
@@ -79,8 +79,9 @@ EFI_STATUS
 (EFIAPI *EFI_HSI2C_READ) (
   IN  UINT8   BusNumber,
   IN  UINT8   SlaveAddr,
-  IN  UINT32  SlaveReg,
-  OUT UINT8  *Data
+  IN  UINT8   SlaveReg,
+  IN  UINT32  Len,
+  OUT UINT8  *pData
   );
 
 /**
@@ -89,11 +90,12 @@ EFI_STATUS
   @param[in] BusNumber                     - The Bus Number.
   @param[in] SlaveAddr                     - The Slave Address.
   @param[in] SlaveReg                      - The Slave Register.
-  @param[in] Data                          - The Data.
+  @param[in] Len                           - The Length of the Data to Write.
+  @param[in] pData                         - The Pointer to data.
 
-  @return EFI_SUCCESS                      - The Data was Read Successfully.
+  @return EFI_SUCCESS                      - The Data was Written Successfully.
   @return EFI_NOT_FOUND                    - The Bus does not Exist.
-  @return EFI_NOT_READY                    - The Bus isn't Init yet.
+  @return EFI_NOT_READY                    - The Bus isn't initialised yet.
   ...
 **/
 typedef
@@ -101,8 +103,9 @@ EFI_STATUS
 (EFIAPI *EFI_HSI2C_WRITE) (
   IN UINT8  BusNumber,
   IN UINT8  SlaveAddr,
-  IN UINT32 SlaveReg,
-  IN UINT8  Data
+  IN UINT8  SlaveReg,
+  IN UINT32 Len,
+  IN UINT8 *pData
   );
 
 //
