@@ -80,7 +80,5 @@ BoardRevisionInit (
 
   DEBUG((EFI_D_ERROR, "\n\n\nBoard Revision: %d\n", GetBoardRevision()));
 
-  while(1);
-
   return EFI_SUCCESS;
 }
