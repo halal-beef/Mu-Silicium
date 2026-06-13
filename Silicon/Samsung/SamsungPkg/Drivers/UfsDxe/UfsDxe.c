@@ -1482,7 +1482,7 @@ InitUfsDriver (
     Dev->Media.RemovableMedia = FALSE;
     Dev->Media.MediaPresent = TRUE;
     Dev->Media.LogicalPartition = FALSE;
-    Dev->Media.ReadOnly = FALSE;
+    Dev->Media.ReadOnly = (Ufs->UnitDesc[Lun].bLUWriteProtect != 0);
     Dev->Media.WriteCaching = FALSE;
     Dev->Media.BlockSize = BlkSize;
     Dev->Media.IoAlign = 0;
