@@ -22,6 +22,12 @@
   #
   RamManagerLib|SamsungPkg/Library/RamManagerLib/RamManagerLib.inf
 
+
+  #
+  # BDS Libraries
+  #
+  ErrataPatchesLib|SamsungPkg/Library/ErrataPatchesLib/ErrataPatchesLib.inf
+
   #
   # IO Libraries
   #
