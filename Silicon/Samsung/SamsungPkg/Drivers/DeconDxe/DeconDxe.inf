@@ -1,0 +1,69 @@
+## @file
+#  DeconDxe - Exynos9830 DECON0/DSIM0 + S6E3HAB (x1s target) framebuffer
+#  bring-up. Ported from lk3rd. Creates a single framebuffer and exposes
+#  it via DECON_FRAMEBUFFER_INFO_PROTOCOL; does not implement GOP.
+##
+
+[Defines]
+  INF_VERSION                   = 0x00010005
+  BASE_NAME                     = DeconDxe
+  FILE_GUID                     = 5b6d2f0a-9e3b-4a4c-8a2f-1c7a4d9b6e12
+  MODULE_TYPE                   = DXE_DRIVER
+  VERSION_STRING                = 1.0
+  ENTRY_POINT                   = DeconDxeEntry
+
+[Sources]
+  DeconDxe.c
+  FramebufferInfo.h
+
+  Compat/CompatPrint.c
+
+  Drv/decon_core.c
+  Drv/dsim_drv.c
+  Drv/dpp_drv.c
+
+  Cal/decon_reg.c
+  Cal/dsim_reg.c
+  Cal/dpp_reg.c
+  Cal/format.c
+  Cal/dpp_coef.h
+
+  Panel/lcd_module.c
+  Panel/s6e3hab_mipi_lcd.c
+  Panel/s6e3hab_lcd_ctrl.c
+  Panel/s6e3hab_lcd_ctrl.h
+  Panel/s6e3hab_param.h
+
+  Platform/DpuIoCtrl.c
+  Platform/Exynos9830Regs.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  ArmPkg/ArmPkg.dec
+  SamsungPkg/SamsungPkg.dec
+  # Add your platform package here if base addresses / PCDs come from it.
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  IoLib
+  TimerLib
+  PrintLib
+
+[Protocols]
+  gEfiCpuArchProtocolGuid                      ## CONSUMES  (DEPEX below)
+  gDeconFramebufferInfoProtocolGuid
+
+[Guids]
+
+[Pcd]
+
+[Depex]
+  # MMIO to DECON0/DSIM0/DPP/PMU/GPIO requires the CPU arch protocol
+  # (MMU/exception handling) to be installed first.
+  gEfiCpuArchProtocolGuid

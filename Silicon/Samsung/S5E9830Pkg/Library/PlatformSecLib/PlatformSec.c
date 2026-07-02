@@ -52,7 +52,7 @@ EnableFrameBufferWrites ()
   }
 
   // Configure Decon
-  MmioWrite32 (DeconRegion.Address + HW_SW_TRIG_CONTROL, 0x1281);
+  //MmioWrite32 (DeconRegion.Address + HW_SW_TRIG_CONTROL, 0x1281);
 }
 
 VOID

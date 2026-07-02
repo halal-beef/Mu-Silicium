@@ -25,6 +25,7 @@
   INF SamsungPkg/Drivers/ChipDataDxe/ChipDataDxe.inf
   INF SamsungPkg/Drivers/DdrInfoDxe/DdrInfoDxe.inf
   INF SamsungPkg/Drivers/GpioDxe/GpioDxe.inf
+  INF SamsungPkg/Drivers/DeconDxe/DeconDxe.inf
   INF SamsungPkg/Drivers/SpeedyDxe/SpeedyDxe.inf
   INF SamsungPkg/Drivers/PmicDxe/S2mps1922Dxe.inf
 
