@@ -9,108 +9,86 @@
 
 #include <Library/DebugLib.h>
 #include <Library/BaseMemoryLib.h>
-#include <Library/CacheMaintenanceLib.h>
-#include <Library/AssemblyUtilsLib.h>
 
 #include "KernelErrataPatcherLib.h"
 #include "Winload.h"
 
-EFI_STATUS
-LocateWinloadMemoryRange (
-  IN  EFI_PHYSICAL_ADDRESS  fwpKernelSetupPhase1,
-  OUT EFI_PHYSICAL_ADDRESS *Base,
+EFI_PHYSICAL_ADDRESS
+LocateWinloadBase (
+  IN  EFI_PHYSICAL_ADDRESS  Base,
   OUT UINTN                *Length)
 {
-  // Verify Parameters
-  if (Base == NULL || Length == NULL) {
-    return EFI_INVALID_PARAMETER;
-  }
+  // Align Base Address
+  Base = ALIGN_VALUE (Base, EFI_PAGE_SIZE);
 
-  // Align FWP Address
-  fwpKernelSetupPhase1 = ALIGN_VALUE (fwpKernelSetupPhase1, EFI_PAGE_SIZE);
+  // Set Scan Length
+  EFI_PHYSICAL_ADDRESS BaseEnd = Base - SCAN_MAX;
 
-  // Set FWP End Address
-  EFI_PHYSICAL_ADDRESS fwpKernelSetupPhase1End = fwpKernelSetupPhase1 - MAX_FWP_SCAN_LENGTH;
-
-  // Go thru FWP Scan Area
-  for (EFI_PHYSICAL_ADDRESS Current = fwpKernelSetupPhase1; Current > fwpKernelSetupPhase1End; Current -= EFI_PAGE_SIZE) {
-    // Get DOS Header
-    EFI_IMAGE_DOS_HEADER *DosHeader = (EFI_IMAGE_DOS_HEADER *)Current;
-
-    // Verify DOS Data
-    if (DosHeader->e_magic != EFI_IMAGE_DOS_SIGNATURE || DosHeader->e_lfanew > MAX_FWP_SCAN_LENGTH) {
+  for (; Base > BaseEnd; Base -= EFI_PAGE_SIZE) {
+    // Verify DOS Signature
+    if (*(UINT16 *)Base != EFI_IMAGE_DOS_SIGNATURE) {
       continue;
     }
 
-    // Get NT Header
-    EFI_IMAGE_NT_HEADERS64 *NtHeader = (EFI_IMAGE_NT_HEADERS64 *)(Current + DosHeader->e_lfanew);
+    // Set Base Offset
+    UINT32 BaseOffset = *(UINT32 *)(Base + 0x3C);
+
+    // Set new winload.efi Base Address
+    EFI_PHYSICAL_ADDRESS NewBase = Base + BaseOffset;
 
     // Verify NT Signature
-    if (NtHeader->Signature != EFI_IMAGE_NT_SIGNATURE) {
+    if (*(UINT16 *)NewBase != EFI_IMAGE_NT_SIGNATURE) {
       continue;
     }
 
-    // Pass Data
-    *Base   = Current;
-    *Length = ALIGN_VALUE (NtHeader->OptionalHeader.SizeOfImage, EFI_PAGE_SIZE);
+    // Set winload.efi Length
+    *Length = *(UINT32 *)(NewBase + 0x110);
 
-    return EFI_SUCCESS;
+    // Align Length
+    *Length = ALIGN_VALUE (*Length, EFI_PAGE_SIZE);
+
+    return Base;
   }
 
-  return EFI_NOT_FOUND;
+  return 0;
 }
 
-EFI_STATUS
+VOID
 PatchOsLoaderArm64TransferToKernel (
   IN EFI_PHYSICAL_ADDRESS  Base,
-  IN UINT64                Length,
   IN UINT8                *ShellCode,
   IN UINTN                 ShellCodeSize)
 {
-  // Verify Parameters
-  if (Base == 0 || ShellCode == NULL || ShellCodeSize == 0) {
-    return EFI_INVALID_PARAMETER;
-  }
-
-  // Go thru each Windows Semester
   for (UINT8 i = 0; i < ARRAY_SIZE (WinSemesterData); i++) {
-    // Set Transfer To Kernel Details
-    EFI_PHYSICAL_ADDRESS TransferToKernelAddr    = Base + 0xC00 + WinSemesterData[i].TransferToKernelOffset;
-    EFI_PHYSICAL_ADDRESS TransferToKernelAddrEnd = TransferToKernelAddr + Length;
+    // Set Transfer To Kernel Address
+    EFI_PHYSICAL_ADDRESS TransferToKernelAddr = Base + WinSemesterData[i].TransferToKernelOffset;
 
     // Set new Transfer To Kernel Address
     EFI_PHYSICAL_ADDRESS NewTransferToKernelAddr = TransferToKernelAddr - ShellCodeSize;
 
-    // Go thru Transfer To Kernel Memory Area
-    for (EFI_PHYSICAL_ADDRESS Current = TransferToKernelAddr; Current < TransferToKernelAddrEnd; Current += ARM64_INSTRUCTION_LENGTH) {
+    for (EFI_PHYSICAL_ADDRESS Current = TransferToKernelAddr; Current < TransferToKernelAddr + SCAN_MAX; Current += sizeof (UINT32)) {
       // Verify Branch Instruction
-      if (ARM64_INSTRUCTION (Current) != ARM64_BRANCH_LOCATION_INSTRUCTION (Current, TransferToKernelAddr)) {
+      if (ARM64_BRANCH_LOCATION_INSTRUCTION (Current, TransferToKernelAddr) != *(UINT32 *)Current) {
         continue;
       }
 
       // Verify Next Instruction
-      if (ARM64_INSTRUCTION (Current + ARM64_TOTAL_INSTRUCTION_LENGTH (1)) != WinSemesterData[i].TargetInstruction) {
+      if (*(UINT32*)(Current + sizeof (UINT32)) != WinSemesterData[i].Instruction) {
         continue;
       }
+
+      // Print Windows Semester
+      DEBUG ((EFI_D_WARN, "%a: Detected Windows Semester = %a\n", __FUNCTION__, WinSemesterData[i].Name));
+
+      // Inject Jump Instruction
+      *(UINT32 *)Current = ARM64_BRANCH_LOCATION_INSTRUCTION (Current, NewTransferToKernelAddr);
 
       // Copy Shell Code
       CopyMem ((VOID *)NewTransferToKernelAddr, (CONST VOID *)ShellCode, ShellCodeSize);
 
-      // Inject Jump Instruction
-      ARM64_INSTRUCTION (Current) = ARM64_BRANCH_LOCATION_INSTRUCTION (Current, NewTransferToKernelAddr);
-
-      // Flush Cache
-      WriteBackInvalidateDataCacheRange ((VOID *)NewTransferToKernelAddr, ShellCodeSize);
-      InvalidateInstructionCacheRange   ((VOID *)NewTransferToKernelAddr, ShellCodeSize);
-      WriteBackInvalidateDataCacheRange ((VOID *)Current, ARM64_INSTRUCTION_LENGTH);
-      InvalidateInstructionCacheRange   ((VOID *)Current, ARM64_INSTRUCTION_LENGTH);
-
-      // Print Windows Semester
-      DEBUG ((EFI_D_WARN, "%a: Detected Windows Semester = %a\n", __FUNCTION__, WinSemesterData[i].SemesterName));
-  
-      return EFI_SUCCESS;
+      return;
     }
   }
 
-  return EFI_NOT_FOUND;
+  DEBUG ((EFI_D_ERROR, "%a: Failed to Auto-Detect Windows Semester!\n", __FUNCTION__));
 }
