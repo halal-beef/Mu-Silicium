@@ -151,6 +151,22 @@ DecompressFvs ()
   return EFI_SUCCESS;
 }
 
+UINT64 exynos_smc(UINT64 cmd, UINT64 arg1, UINT64 arg2, UINT64 arg3)
+{
+        register UINT64 reg0 __asm__ ("x0") = cmd;
+        register UINT64 reg1 __asm__ ("x1") = arg1;
+        register UINT64 reg2 __asm__ ("x2") = arg2;
+        register UINT64 reg3 __asm__ ("x3") = arg3;
+
+        __asm__ volatile (
+                "smc\t0\n"
+                : "+r"(reg0), "+r"(reg1), "+r"(reg2), "+r"(reg3)
+
+        );
+
+        return reg0;
+}
+
 STATIC
 VOID
 SecMain (
@@ -212,6 +228,10 @@ SecMain (
   // Load DXE Core
   Status = LoadDxeCoreFromFv (NULL, 0);
   if (EFI_ERROR (Status)) {
+  // smc...
+  exynos_smc((-0x512), 1, 0xF1000000, (1024 * 1024 * 6));
+  exynos_smc((-0x512), 2, 0xF1000000, (1024 * 1024 * 6));
+
     DEBUG ((EFI_D_ERROR, "Failed to Load DXE Core! Status = %r\n", Status));
   }
 }
