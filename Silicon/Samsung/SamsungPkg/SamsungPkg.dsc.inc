@@ -23,6 +23,11 @@
   ArmSmcLib|SamsungPkg/Library/ArmSmcLib/ArmSmcLib.inf
 
   #
+  # BDS Libraries
+  #
+  ErrataPatchesLib|SamsungPkg/Library/ErrataPatchesLib/ErrataPatchesLib.inf
+
+  #
   # Custom Libraries
   #
   PlatformUfsLib|SamsungPkg/Library/PlatformUfsLibNull/PlatformUfsLibNull.inf
