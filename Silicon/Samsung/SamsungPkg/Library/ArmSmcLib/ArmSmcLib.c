@@ -22,14 +22,19 @@ ArmCallSmc3 (
 {
   // Set SMC Parameter
   register UINT64 Reg0 __asm__ ("x0") = (UINT64)Function;
-  register UINT64 Reg1 __asm__ ("x1") = (UINT64)Arg1;
-  register UINT64 Reg2 __asm__ ("x2") = (UINT64)Arg2;
-  register UINT64 Reg3 __asm__ ("x3") = (UINT64)Arg3;
+  register UINT64 Reg1 __asm__ ("x1") = (Arg1 != NULL) ? (UINT64)(*Arg1) : 0;
+  register UINT64 Reg2 __asm__ ("x2") = (Arg2 != NULL) ? (UINT64)(*Arg2) : 0;
+  register UINT64 Reg3 __asm__ ("x3") = (Arg3 != NULL) ? (UINT64)(*Arg3) : 0;
 
   // Call SMC
   __asm__ volatile ("dsb\tsy\n" "smc\t0\n" : "+r"(Reg0), "+r"(Reg1), "+r"(Reg2), "+r"(Reg3));
 
-  return Reg0;
+  // Set regs that may have been returned by SMC
+  if (Arg1 != NULL) { *Arg1 = (UINTN)Reg1; }
+  if (Arg2 != NULL) { *Arg2 = (UINTN)Reg2; }
+  if (Arg3 != NULL) { *Arg3 = (UINTN)Reg3; }
+
+  return (UINTN)Reg0;
 }
 
 UINTN

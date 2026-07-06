@@ -1,0 +1,24 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = ExynosSecurityDxe
+  FILE_GUID                      = D28EAE54-AB69-4130-A930-094E3F0B5068
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = InitSecurityDriver
+
+[Sources]
+  ExynosSecurityDxe.c
+
+[Packages]
+  ArmPkg/ArmPkg.dec
+  MdePkg/MdePkg.dec
+  SiliciumPkg/SiliciumPkg.dec
+  SamsungPkg/SamsungPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  ArmSmcLib
+  DebugLib
+
+[Depex]
+  TRUE
