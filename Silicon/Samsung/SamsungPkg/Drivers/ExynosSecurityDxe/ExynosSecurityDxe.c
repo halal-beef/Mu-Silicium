@@ -160,5 +160,11 @@ InitSecurityDriver (
     DEBUG((EFI_D_ERROR, "Failed to initialize SecurePayload.\n"));
   }
 
+  UINTN ret = ArmCallSmc3(0xc3000001, 0, 0, 0);
+
+  DEBUG((EFI_D_ERROR, "Returned 0x%llx\n", ret));
+
+//  while(1);
+
   return EFI_SUCCESS;
 }
