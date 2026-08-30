@@ -226,7 +226,8 @@ STATIC
 EFI_STATUS
 UsbMsdScsiInquiry (IN USBMSD_DEV *Dev)
 {
-  UINT8 *Data = (UINT8 *)Dev->DataBuffer;
+  UINT8              *Data  = (UINT8 *)Dev->DataBuffer;
+  EFI_BLOCK_IO_MEDIA *Media = Dev->Luns[Dev->Cbw.Lun].BlkIo->Media;
 
   //
   // An EVPD Request asks for a Vital Product Data Page, none of which are
@@ -239,7 +240,15 @@ UsbMsdScsiInquiry (IN USBMSD_DEV *Dev)
   ZeroMem (Data, SCSI_INQUIRY_LENGTH);
 
   Data[0] = 0x00;                       // Direct Access Block Device
-  Data[1] = 0x80;                       // Removable Medium
+
+  //
+  // The Removable Medium Bit is reported from the Medium itself rather than
+  // hardcoded. Internal Storage such as UFS is not Removable, and Windows only
+  // honours a GPT on a Disk it considers Fixed. Claiming Removable makes it
+  // stop at the Protective MBR and show a single unusable Partition.
+  //
+  Data[1] = Media->RemovableMedia ? 0x80 : 0x00;
+
   Data[2] = 0x05;                       // Claims conformance to SPC-3
   Data[3] = 0x02;                       // Response Data Format
   Data[4] = SCSI_INQUIRY_LENGTH - 5;    // Additional Length
