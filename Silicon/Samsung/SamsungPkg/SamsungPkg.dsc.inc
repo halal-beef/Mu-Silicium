@@ -48,6 +48,11 @@
   PlatformUsbfnLib|SamsungNullPkg/Library/PlatformUsbfnLibNull/PlatformUsbfnLibNull.inf
 
   #
+  # Boot Libraries
+  #
+  PlatformBootOptionsLib|SamsungPkg/Library/PlatformBootOptionsLib/PlatformBootOptionsLib.inf
+
+  #
   # Samsung Libraries
   #
   UsiLib|SamsungNullPkg/Library/UsiNullLib/UsiNullLib.inf
@@ -79,6 +84,12 @@
   # USB Drivers
   #
   SamsungPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
+  SamsungPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
+
+  #
+  # Applications
+  #
+  SamsungPkg/Applications/MassStorage/MassStorage.inf
 
   #
   # RNG Drivers

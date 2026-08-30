@@ -1,0 +1,38 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = UsbMsdDxe
+  FILE_GUID                      = 7C1A6E48-2B95-4D3F-8A07-E6B4C90D51A2
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = InitUsbMsdDriver
+
+[Sources]
+  UsbMsdDxe.c
+  UsbMsdDesc.c
+  UsbMsdBot.c
+  UsbMsdScsi.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  SiliciumPkg/SiliciumPkg.dec
+  SamsungPkg/SamsungPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiLib
+
+[Guids]
+  gEfiEventExitBootServicesGuid                 ## CONSUMES
+
+[Protocols]
+  gExynosUsbMsdProtocolGuid                     ## PRODUCES
+  gEfiUsbFunctionIoProtocolGuid                 ## CONSUMES
+  gEfiBlockIoProtocolGuid                       ## CONSUMES
+
+[Depex]
+  gEfiUsbFunctionIoProtocolGuid
