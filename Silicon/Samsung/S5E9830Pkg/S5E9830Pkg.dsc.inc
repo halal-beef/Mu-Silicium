@@ -83,6 +83,7 @@
   # Power Management Libraries
   #
   PmicLib|S5E9830Pkg/Library/PmicLib/PmicLib.inf
+  PlatformBatteryLib|S5E9830Pkg/Library/PlatformBatteryLib/PlatformBatteryLib.inf
 
   #
   # Storage Libraries

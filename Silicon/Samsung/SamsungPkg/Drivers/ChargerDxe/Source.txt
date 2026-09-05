@@ -1,0 +1,5 @@
+REPO:   https://github.com/LineageOS/android_kernel_samsung_universal9830/
+BRANCH: lineage-23.2
+FILES:  drivers/battery_v2/max77705_charger.c
+        drivers/battery_v2/include/charger/max77705_charger.h
+        include/linux/mfd/max77705-private.h

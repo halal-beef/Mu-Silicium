@@ -1,0 +1,14 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = PlatformBatteryLibNull
+  FILE_GUID                      = 9F2A6D31-5C84-42B7-B0E9-27D1F63A8C05
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = PlatformBatteryLib|DXE_DRIVER
+
+[Sources]
+  BatteryNull.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  SamsungPkg/SamsungPkg.dec

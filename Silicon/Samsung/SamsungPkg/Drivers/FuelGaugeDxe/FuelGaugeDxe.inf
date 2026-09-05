@@ -1,0 +1,28 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = FuelGaugeDxe
+  FILE_GUID                      = 7C3E58A0-9D14-4B62-8F07-2A6B31E9D5C8
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = InitFuelGauge
+
+[Sources]
+  FuelGauge.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  SiliciumPkg/SiliciumPkg.dec
+  SamsungPkg/SamsungPkg.dec
+
+[LibraryClasses]
+  DebugLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  PlatformBatteryLib
+
+[Protocols]
+  gEfiHsI2cProtocolGuid
+  gEfiFuelGaugeProtocolGuid
+
+[Depex]
+  TRUE

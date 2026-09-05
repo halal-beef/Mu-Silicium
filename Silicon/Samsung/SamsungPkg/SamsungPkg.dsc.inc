@@ -35,6 +35,7 @@
   # Power Management Libraries
   #
   PmicLib|SamsungNullPkg/Library/PmicNullLib/PmicNullLib.inf
+  PlatformBatteryLib|SamsungNullPkg/Library/PlatformBatteryLibNull/PlatformBatteryLibNull.inf
 
   #
   # Storage Libraries
@@ -74,6 +75,8 @@
   # Power Management Drivers
   #
   SamsungPkg/Drivers/PmicDxe/PmicDxe.inf
+  SamsungPkg/Drivers/FuelGaugeDxe/FuelGaugeDxe.inf
+  SamsungPkg/Drivers/ChargerDxe/ChargerDxe.inf
 
   #
   # USB Drivers
