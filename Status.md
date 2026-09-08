@@ -123,7 +123,7 @@
 | USB Power Delivery |             | ❌    |
 | SD Card            |             | ❌    |
 | Windows Boot       | WinPE Only  | ✅    |
-| Linux Boot         |             | ❌    |
+| Linux Boot         |             | ✅    |
 
 ### OS Status
 
