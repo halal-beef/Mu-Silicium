@@ -29,6 +29,27 @@ ExitBootServicesWrapper (
   );
 
 EFI_STATUS
+EFIAPI
+KernelErrataPatcherGetMemoryMap (
+  IN OUT UINTN                 *MemoryMapSize,
+  IN OUT EFI_MEMORY_DESCRIPTOR *MemoryMap,
+  OUT    UINTN                 *MapKey,
+  OUT    UINTN                 *DescriptorSize,
+  OUT    UINT32                *DescriptorVersion,
+  IN     EFI_PHYSICAL_ADDRESS   ReturnAddress
+  );
+
+EFI_STATUS
+EFIAPI
+GetMemoryMapWrapper (
+  IN OUT UINTN                 *MemoryMapSize,
+  IN OUT EFI_MEMORY_DESCRIPTOR *MemoryMap,
+  OUT    UINTN                 *MapKey,
+  OUT    UINTN                 *DescriptorSize,
+  OUT    UINT32                *DescriptorVersion
+  );
+
+EFI_STATUS
 LocateMemoryAttributeProtocol ();
 
 EFI_STATUS
