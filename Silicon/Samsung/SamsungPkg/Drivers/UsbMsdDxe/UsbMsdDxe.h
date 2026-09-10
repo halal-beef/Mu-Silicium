@@ -10,7 +10,7 @@
 //
 // Number of LUNs the Device exposes to the Host.
 //
-#define USBMSD_MAX_LUN            4
+#define USBMSD_MAX_LUN            8
 
 //
 // Logical Endpoint Number used for the Bulk Pipes. EP0 is the Control Pipe.

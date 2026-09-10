@@ -984,6 +984,8 @@ InitUsbfnDwc3Driver (
                                                    NULL);
   Dwc3BuildSerialNumber();
 
+  UsbfnPlatformPhyInit();
+
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_ERROR, "Failed to install USB Function IO Protocol! Status = %r\n", Status));
     goto Failure;
