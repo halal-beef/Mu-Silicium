@@ -35,5 +35,8 @@
   gEfiUsbFunctionIoProtocolGuid                 ## PRODUCES
   gEfiChipInfoProtocolGuid                      ## CONSUMES
 
+[Guids]
+  gEfiEventReadyToBootGuid
+
 [Depex]
   TRUE

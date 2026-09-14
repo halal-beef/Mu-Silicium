@@ -904,6 +904,17 @@ Dwc3FreeResources (IN DWC3_DEV *Dev)
   FreePool (Dev);
 }
 
+STATIC VOID EFIAPI
+Dwc3ReadyToBoot (
+  IN EFI_EVENT  Event,
+  IN VOID      *Context)
+{
+  DEBUG ((EFI_D_WARN, "Start USB PHY\n"));
+  UsbfnPlatformPhyInit();
+  gBS->CloseEvent (Event);
+}
+
+
 EFI_STATUS
 EFIAPI
 InitUsbfnDwc3Driver (
@@ -913,6 +924,7 @@ InitUsbfnDwc3Driver (
   EFI_STATUS Status;
   DWC3_DEV  *Dev;
   UINT8      Index;
+  EFI_EVENT  Event;
 
   Dev = AllocateZeroPool (sizeof (DWC3_DEV));
   if (Dev == NULL) {
@@ -986,6 +998,12 @@ InitUsbfnDwc3Driver (
 
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_ERROR, "Failed to install USB Function IO Protocol! Status = %r\n", Status));
+    goto Failure;
+  }
+
+  Status = gBS->CreateEventEx (EVT_NOTIFY_SIGNAL, TPL_CALLBACK, Dwc3ReadyToBoot, NULL, &gEfiEventReadyToBootGuid, &Event);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to create ReadyToBoot event! Status = %r\n", Status));
     goto Failure;
   }
 
