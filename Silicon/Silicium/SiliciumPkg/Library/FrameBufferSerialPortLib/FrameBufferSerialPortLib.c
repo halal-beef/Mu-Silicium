@@ -7,92 +7,67 @@
 #include "FrameBuffer.h"
 #include "Font.h"
 
-inline
 STATIC
 UINT8*
-DrawPixel (
-  IN UINT8  *Pixels,
-  IN UINT32  PixelColor,
-  IN UINT32  FontScale)
+GetPixelAddress (
+  IN EFI_PHYSICAL_ADDRESS  FbBase,
+  IN UINTN                 X,
+  IN UINTN                 Y)
 {
-  // Repeat Action
-  for (UINT8 i = 0; i < FontScale; i++) {
-    // Save Pixel Color
-    UINT32 Color = PixelColor;
+  UINTN Row;
+  UINTN Column;
+  UINTN Stride;
 
-    // Go theu each Byte
-    for (UINT8 j = 0; j < FB_BPP; j++) {
-      // Update Pixel Color
-      *Pixels++ = (UINT8)Color;
+  switch (FixedPcdGet32 (PcdFrameBufferRotation)) {
+    case 90:
+      Column = FB_HEIGHT - 1 - Y;
+      Row    = X;
+      break;
 
-      // Shift Pixel Color
-      Color >>= 8;
-    }
+    case 180:
+      Column = FB_WIDTH - 1 - X;
+      Row    = FB_HEIGHT - 1 - Y;
+      break;
+
+    case 270:
+      Column = Y;
+      Row    = FB_WIDTH - 1 - X;
+      break;
+
+    default:
+      Column = X;
+      Row    = Y;
+      break;
   }
 
-  return Pixels;
-}
+  Stride = ((FixedPcdGet32 (PcdFrameBufferRotation) % 180) == 0) ? FB_WIDTH : FB_HEIGHT;
 
-inline
-STATIC
-UINT8*
-DrawRow (
-  IN UINT8  *Pixels,
-  IN UINT32  RowData,
-  IN UINT32  FontScale,
-  IN UINTN   Stride)
-{
-  // Repeat Action
-  for (UINT8 i = 0; i < FontScale; i++) {
-    // Save Row Data
-    UINT32 Data = RowData;
-
-    // Go thru each Pixel
-    for (UINT8 j = 0; j < FONT_WIDTH; j++) {
-      // Set Pixel Color
-      UINT32 PixelColor = (Data & 1) ? 0xFFFFFFFF : 0x00000000;
-      
-      // Draw Pixel Color
-      Pixels = DrawPixel (Pixels, PixelColor, FontScale);
-
-      // Shift Row
-      Data >>= 1;
-    }
-
-    // Append Stride
-    Pixels += Stride;
-  }
-  
-  return Pixels;
+  return (UINT8 *)(UINTN)FbBase + ((Row * Stride) + Column) * FB_BPP;
 }
 
 VOID
 DrawGlyph (
-  IN UINT8  *Pixels,
-  IN UINT64  Glyph,
-  IN UINT32  FontScale)
+  IN EFI_PHYSICAL_ADDRESS  FbBase,
+  IN UINTN                 X,
+  IN UINTN                 Y,
+  IN UINT64                Glyph,
+  IN UINT32                FontScale)
 {
-  // Calculate Stride
-  UINTN Stride = (FB_WIDTH - (FONT_WIDTH * FontScale)) * FB_BPP;
+  UINT32 RowData = (UINT32)(Glyph >> 32);
 
-  // Split Glyph
-  UINT32 TopGlyph    = (UINT32)(Glyph >> 32);
-  UINT32 BottomGlyph = (UINT32)Glyph;
-
-  // Set Inital Row Data
-  UINT32 RowData = TopGlyph;
-
-  // Go thru each Row
   for (UINT8 Row = 0; Row < 12; Row++) {
-    // Switch Row Data
     if (Row == 6) {
-      RowData = BottomGlyph;
+      RowData = (UINT32)Glyph;
     }
 
-    // Draw Row
-    Pixels = DrawRow (Pixels, RowData, FontScale, Stride);
+    for (UINT32 i = 0; i < FONT_WIDTH * FontScale; i++) {
+      UINT32 Color = ((RowData >> (i / FontScale)) & 1) ? 0xFFFFFFFF : 0x00000000;
 
-    // Shift to next Row
+      for (UINT32 j = 0; j < FontScale; j++) {
+        CopyMem (GetPixelAddress (FbBase, X + i, Y + (Row * FontScale) + j), &Color, FB_BPP);
+      }
+    }
+
     RowData >>= FONT_WIDTH;
   }
 }
@@ -161,7 +136,6 @@ WriteFrameBuffer (
 {
   EFI_FRAME_BUFFER_POSITION *CurrentPosition;
   EFI_FRAME_BUFFER_POSITION  MaxPosition;
-  UINT8                     *Pixels;
 
   // Set Glyph Font
   STATIC CONST UINT64 GlyphFont[] = GLYPH_FONT;
@@ -200,13 +174,8 @@ WriteFrameBuffer (
   UINTN GlyphWidth  = (FONT_WIDTH  + 1) * GlyphFontScale;
   UINTN GlyphHeight = (FONT_HEIGHT - 4) * GlyphFontScale;
 
-  // Set Glyph Pixels
-  Pixels  = (VOID *)FbBase;
-  Pixels += (UINTN)CurrentPosition->YPos * GlyphHeight * (FB_WIDTH * FB_BPP);
-  Pixels += (UINTN)CurrentPosition->XPos * GlyphWidth  * FB_BPP;
-
   // Draw Glyph
-  DrawGlyph (Pixels, Glyph, GlyphFontScale);
+  DrawGlyph (FbBase, (UINTN)CurrentPosition->XPos * GlyphWidth, (UINTN)CurrentPosition->YPos * GlyphHeight, Glyph, GlyphFontScale);
 
   // Increase X Position
   CurrentPosition->XPos++;

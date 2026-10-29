@@ -174,7 +174,7 @@ SetFrameBufferModeDetails (
   // Set Frame Buffer Infos
   mFrameBuffer.Mode->Info->HorizontalResolution = Width;
   mFrameBuffer.Mode->Info->VerticalResolution   = Height;
-  mFrameBuffer.Mode->Info->PixelsPerScanLine    = Width;
+  mFrameBuffer.Mode->Info->PixelsPerScanLine    = (FixedPcdGet32 (PcdFrameBufferRotation) % 180) == 0 ? Width : Height;
 
   // Set Pixel Format
   switch (ColorDepth) {

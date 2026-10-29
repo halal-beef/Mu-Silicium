@@ -26,3 +26,4 @@
   gSiliciumPkgTokenSpaceGuid.PcdFrameBufferHeight
   gSiliciumPkgTokenSpaceGuid.PcdFrameBufferColorDepth
   gSiliciumPkgTokenSpaceGuid.PcdFrameBufferDelay
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferRotation
