@@ -56,6 +56,7 @@
   #
   # BDS Libraries
   #
+  PlatformBootOptionsLib|SamsungPkg/Library/PlatformBootOptionsLib/PlatformBootOptionsLib.inf
   ErrataPatchesLib|SamsungPkg/Library/ErrataPatchesLib/ErrataPatchesLib.inf
   PlatformBootOptionsLib|SamsungPkg/Library/PlatformBootOptionsLib/PlatformBootOptionsLib.inf
 
@@ -105,3 +106,4 @@
   # Applications
   #
   SamsungPkg/Applications/MassStorage/MassStorage.inf
+  SamsungPkg/Applications/FastbootApp/FastbootApp.inf

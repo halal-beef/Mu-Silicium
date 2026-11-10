@@ -12,7 +12,7 @@ GetPlatformBootOptions (
   UINT8                     LocalBootOptionCount = 0;
 
   // Allocate Memory
-  LocalBootOption = AllocateZeroPool (sizeof (EFI_PLATFORM_BOOT_OPTION));
+  LocalBootOption = AllocateZeroPool (sizeof (EFI_PLATFORM_BOOT_OPTION) * 2);
   if (LocalBootOption == NULL) {
     DEBUG ((EFI_D_ERROR, "%a: Failed to Allocate Memory for Boot Options!\n", __FUNCTION__));
     goto exit;
@@ -23,8 +23,13 @@ GetPlatformBootOptions (
   LocalBootOption[0].AppGuid       = FixedPcdGetPtr (PcdMassStorageFile);
   LocalBootOption[0].LoadAttribute = LOAD_OPTION_HIDDEN;
 
+  // Add Fastboot Mode Boot Option
+  LocalBootOption[1].AppName       = L"Fastboot Mode";
+  LocalBootOption[1].AppGuid       = FixedPcdGetPtr (PcdFastbootFile);
+  LocalBootOption[1].LoadAttribute = LOAD_OPTION_ACTIVE;
+
   // Set Boot Option Count
-  LocalBootOptionCount = 1;
+  LocalBootOptionCount = 2;
 
 exit:
   // Pass Data

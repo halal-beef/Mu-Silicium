@@ -21,3 +21,4 @@
 
 [FixedPcd]
   gSamsungPkgTokenSpaceGuid.PcdMassStorageFile
+  gSamsungPkgTokenSpaceGuid.PcdFastbootFile
