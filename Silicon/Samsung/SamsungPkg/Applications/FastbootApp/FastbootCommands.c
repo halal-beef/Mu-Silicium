@@ -103,6 +103,150 @@ CmdDownload (IN CONST CHAR8 *SizeText)
 
 STATIC
 VOID
+CmdUpload (IN CONST CHAR8 *Arg)
+{
+  EFI_STATUS Status;
+
+  if (gFb.DownloadBuf == NULL || gFb.DownloadReceived != gFb.DownloadSize || gFb.DownloadSize == 0) {
+    FB_FAIL ("no data staged");
+    return;
+  }
+
+  // The host reads the DATA length into a signed int.
+  if (gFb.DownloadSize > MAX_INT32) {
+    FB_FAIL ("staged data too large");
+    return;
+  }
+
+  Status = FbSend ("DATA", "%08x", (UINT32)gFb.DownloadSize);
+  if (EFI_ERROR (Status)) {
+    return;
+  }
+
+  Print (L"  uploading %u bytes\n", (UINT32)gFb.DownloadSize);
+
+  Status = FbSendData (gFb.DownloadBuf, gFb.DownloadSize);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Fastboot: upload failed: %r\n", Status));
+    return;
+  }
+
+  FB_OKAY ("");
+}
+
+STATIC
+VOID
+CmdFetch (IN CONST CHAR8 *Arg)
+{
+  CHAR8        Spec[FB_MAX_NAME + 40];
+  CHAR8       *Offset = NULL;
+  CHAR8       *Size   = NULL;
+  CHAR8       *End;
+  CHAR8       *P;
+  FB_PARTITION Partition;
+  UINT64       Start = 0;
+  UINT64       Total;
+  UINT64       Done;
+  UINT8       *TxBuf = NULL;
+  UINTN        Chunk;
+  EFI_STATUS   Status;
+
+  if (AsciiStrLen (Arg) >= sizeof (Spec)) {
+    FB_FAIL ("invalid fetch arguments");
+    return;
+  }
+
+  AsciiStrCpyS (Spec, sizeof (Spec), Arg);
+
+  for (P = Spec; *P != 0; P++) {
+    if (*P == ':') {
+      *P = 0;
+
+      if (Offset == NULL) {
+        Offset = P + 1;
+      } else if (Size == NULL) {
+        Size = P + 1;
+      } else {
+        FB_FAIL ("invalid fetch arguments");
+        return;
+      }
+    }
+  }
+
+  if (EFI_ERROR (FbFindPartition (Spec, &Partition)) || Partition.Size == 0) {
+    FB_FAIL ("no such partition");
+    return;
+  }
+
+  if (Offset != NULL && (RETURN_ERROR (AsciiStrHexToUint64S (Offset, &End, &Start)) || *End != 0)) {
+    FB_FAIL ("invalid offset, must be integer");
+    return;
+  }
+
+  if (Start > Partition.Size) {
+    FB_FAIL ("invalid offset");
+    return;
+  }
+
+  Total = Partition.Size - Start;
+
+  if (Size != NULL) {
+    if (RETURN_ERROR (AsciiStrHexToUint64S (Size, &End, &Total)) || *End != 0) {
+      FB_FAIL ("invalid size, must be integer");
+      return;
+    }
+
+    if (Total > Partition.Size - Start) {
+      FB_FAIL ("size exceeds partition");
+      return;
+    }
+  }
+
+  if (Total == 0) {
+    FB_OKAY ("Read 0 bytes");
+    return;
+  }
+
+  if (Total > FixedPcdGet32 (PcdFastbootMaxDownloadSize)) {
+    FB_FAIL ("size exceeds max-fetch-size");
+    return;
+  }
+
+  Status = gFb.Usb->AllocateTransferBuffer (gFb.Usb, FB_IO_CHUNK, (VOID **)&TxBuf);
+  if (EFI_ERROR (Status)) {
+    FB_FAIL ("not enough memory");
+    return;
+  }
+
+  if (EFI_ERROR (FbSend ("DATA", "%08x", (UINT32)Total))) {
+    goto Out;
+  }
+
+  Print (L"  fetching %a (0x%lx + 0x%lx)\n", Spec, Start, Total);
+
+  for (Done = 0; Done < Total; Done += Chunk) {
+    Chunk = (UINTN)((Total - Done > FB_IO_CHUNK) ? FB_IO_CHUNK : (Total - Done));
+
+    Status = FbReadPartitionData (&Partition, Start + Done, TxBuf, Chunk);
+    if (!EFI_ERROR (Status)) {
+      Status = FbSendData (TxBuf, Chunk);
+    }
+
+    if (EFI_ERROR (Status)) {
+      // Mid data phase, no way to send a FAIL. Host sees a short read.
+      DEBUG ((EFI_D_ERROR, "Fastboot: fetch failed at 0x%lx: %r\n", Start + Done, Status));
+      goto Out;
+    }
+  }
+
+  FB_OKAY ("Fetched %a (offset=0x%lx, size=0x%lx)", Spec, Start, Total);
+
+Out:
+  gFb.Usb->FreeTransferBuffer (gFb.Usb, TxBuf);
+}
+
+STATIC
+VOID
 CmdFlash (IN CONST CHAR8 *Name)
 {
   FB_PARTITION      Partition;
@@ -225,6 +369,8 @@ STATIC CONST FB_COMMAND  mCommands[] = {
   // Prefix               Exact  Handler
   { "getvar:",            FALSE, CmdGetVar    },
   { "download:",          FALSE, CmdDownload  },
+  { "upload",             TRUE,  CmdUpload    },
+  { "fetch:",             FALSE, CmdFetch     },
   { "flash:",             FALSE, CmdFlash     },
   { "erase:",             FALSE, CmdErase     },
   { "oem ",               FALSE, CmdOem       },

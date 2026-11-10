@@ -74,6 +74,14 @@ FbFlashImage (
   );
 
 EFI_STATUS
+FbReadPartitionData (
+  IN  FB_PARTITION *Partition,
+  IN  UINT64        Offset,
+  OUT VOID         *Buffer,
+  IN  UINTN         Length
+  );
+
+EFI_STATUS
 FbErasePartition (
   IN FB_PARTITION *Partition,
   IN FB_PROGRESS   Progress,

@@ -398,3 +398,39 @@ FbErasePartition (
 
   return Status;
 }
+
+EFI_STATUS
+FbReadPartitionData (
+  IN  FB_PARTITION *Partition,
+  IN  UINT64        Offset,
+  OUT VOID         *Buffer,
+  IN  UINTN         Length)
+{
+  EFI_BLOCK_IO_MEDIA *Media = Partition->BlockIo->Media;
+  UINT32              Bs    = Media->BlockSize;
+  UINT64              First = DivU64x32 (Offset, Bs);
+  UINTN               Skew  = (UINTN)(Offset - MultU64x32 (First, Bs));
+  UINTN               Span  = ALIGN_VALUE (Skew + Length, Bs);
+  UINT8              *Bounce;
+  EFI_STATUS          Status;
+
+  if (Length == 0 || Length > FB_IO_CHUNK || Offset + Length > Partition->Size) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Bounce = AllocatePages (EFI_SIZE_TO_PAGES (Span));
+  if (Bounce == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  Status = Partition->BlockIo->ReadBlocks (Partition->BlockIo, Media->MediaId, First, Span, Bounce);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Fastboot: ReadBlocks failed at 0x%lx! Status = %r\n", Offset, Status));
+  } else {
+    CopyMem (Buffer, Bounce + Skew, Length);
+  }
+
+  FreePages (Bounce, EFI_SIZE_TO_PAGES (Span));
+
+  return Status;
+}

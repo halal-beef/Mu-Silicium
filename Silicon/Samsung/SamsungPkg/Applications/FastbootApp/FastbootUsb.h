@@ -66,6 +66,12 @@ VOID
 FbUsbArmRx (VOID);
 
 EFI_STATUS
+FbSendData (
+  IN VOID  *Buffer,
+  IN UINTN  Size
+  );
+
+EFI_STATUS
 FbSend (
   IN CONST CHAR8 *Prefix,
   IN CONST CHAR8 *Format,
