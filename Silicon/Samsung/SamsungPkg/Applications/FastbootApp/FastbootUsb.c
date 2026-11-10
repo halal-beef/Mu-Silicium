@@ -428,6 +428,53 @@ FbSend (
 }
 
 EFI_STATUS
+FbSendData (
+  IN VOID  *Buffer,
+  IN UINTN  Size)
+{
+  UINT8      *Pos = (UINT8 *)Buffer;
+  UINTN       Length;
+  BOOLEAN     Zlp;
+  EFI_STATUS  Status = EFI_SUCCESS;
+
+  if (!gFb.Configured) {
+    return EFI_NOT_READY;
+  }
+
+  Zlp = FALSE;
+  gFb.Usb->SetEndpointPolicy (gFb.Usb, FB_BULK_EP, EfiUsbEndpointDirectionDeviceTx, EfiUsbPolicyZeroLengthTermination, sizeof (Zlp), &Zlp);
+
+  while (Size > 0) {
+    Length = (Size > gFb.MaxTransfer) ? gFb.MaxTransfer : Size;
+
+    gFb.TxPending = TRUE;
+
+    Status = gFb.Usb->Transfer (gFb.Usb, FB_BULK_EP, EfiUsbEndpointDirectionDeviceTx, &Length, Pos);
+    if (EFI_ERROR (Status)) {
+      gFb.TxPending = FALSE;
+      break;
+    }
+
+    Status = FbWaitTx ();
+    if (EFI_ERROR (Status)) {
+      break;
+    }
+
+    if (Length == 0) {
+      Status = EFI_DEVICE_ERROR;
+      break;
+    }
+
+    Pos  += Length;
+    Size -= Length;
+  }
+
+  Zlp = TRUE;
+  gFb.Usb->SetEndpointPolicy (gFb.Usb, FB_BULK_EP, EfiUsbEndpointDirectionDeviceTx, EfiUsbPolicyZeroLengthTermination, sizeof (Zlp), &Zlp);
+  return Status;
+}
+
+EFI_STATUS
 FbUsbInit (VOID)
 {
   EFI_STATUS                   Status;

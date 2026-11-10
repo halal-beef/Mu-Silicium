@@ -47,7 +47,7 @@ GetSerial (
 
 STATIC
 BOOLEAN
-GetMaxDownloadSize (
+GetMaxDownloadFetchSize (
   IN  CONST CHAR8 *Arg OPTIONAL,
   OUT CHAR8       *Out,
   IN  UINTN        OutSize)
@@ -118,20 +118,21 @@ GetHasSlot (
 
 STATIC CONST FB_VAR  mVars[] = {
   // Name                  InAll  Value              Get
-  { "version",             TRUE,  FB_VERSION,        NULL               },
-  { "version-bootloader",  TRUE,  FB_APP_VERSION,    NULL               },
-  { "product",             TRUE,  NULL,              GetProduct         },
-  { "variant",             TRUE,  NULL,              GetVariant         },
-  { "serialno",            TRUE,  NULL,              GetSerial          },
-  { "max-download-size",   TRUE,  NULL,              GetMaxDownloadSize },
-  { "secure",              TRUE,  "no",              NULL               },
-  { "unlocked",            TRUE,  "yes",             NULL               },
-  { "is-userspace",        TRUE,  "no",              NULL               },
-  { "slot-count",          TRUE,  "0",               NULL               },
-  { "kernel",              TRUE,  "uefi",            NULL               },
-  { "partition-size",      FALSE, NULL,              GetPartitionSize   },
-  { "partition-type",      FALSE, NULL,              GetPartitionType   },
-  { "has-slot",            FALSE, NULL,              GetHasSlot         },
+  { "version",             TRUE,  FB_VERSION,        NULL                    },
+  { "version-bootloader",  TRUE,  FB_APP_VERSION,    NULL                    },
+  { "product",             TRUE,  NULL,              GetProduct              },
+  { "variant",             TRUE,  NULL,              GetVariant              },
+  { "serialno",            TRUE,  NULL,              GetSerial               },
+  { "max-download-size",   TRUE,  NULL,              GetMaxDownloadFetchSize },
+  { "max-fetch-size",      TRUE,  NULL,              GetMaxDownloadFetchSize },
+  { "secure",              TRUE,  "no",              NULL                    },
+  { "unlocked",            TRUE,  "yes",             NULL                    },
+  { "is-userspace",        TRUE,  "no",              NULL                    },
+  { "slot-count",          TRUE,  "0",               NULL                    },
+  { "kernel",              TRUE,  "uefi",            NULL                    },
+  { "partition-size",      FALSE, NULL,              GetPartitionSize        },
+  { "partition-type",      FALSE, NULL,              GetPartitionType        },
+  { "has-slot",            FALSE, NULL,              GetHasSlot              },
 };
 
 STATIC
