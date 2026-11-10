@@ -42,3 +42,9 @@
   gSamsungPkgTokenSpaceGuid.PcdHasSecurePgtbl|FALSE|BOOLEAN|0x0000D400
   gSamsungPkgTokenSpaceGuid.PcdHasHarx|FALSE|BOOLEAN|0x0000D401
   gSamsungPkgTokenSpaceGuid.PcdHasDrmPlugin|FALSE|BOOLEAN|0x0000D402
+
+  #
+  # Fastboot
+  #
+  gSamsungPkgTokenSpaceGuid.PcdFastbootFile|{ 0x52, 0x1E, 0x3F, 0x7C, 0x64, 0x9A, 0x8D, 0x4B, 0xA1, 0xD2, 0x5E, 0x0B, 0x6C, 0x47, 0xF3, 0xA9 }|VOID*|0x0000D500
+  gSamsungPkgTokenSpaceGuid.PcdFastbootMaxDownloadSize|0x04000000|UINT32|0x0000D501

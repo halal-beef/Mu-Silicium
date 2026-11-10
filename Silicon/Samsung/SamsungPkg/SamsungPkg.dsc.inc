@@ -55,6 +55,7 @@
   #
   # BDS Libraries
   #
+  PlatformBootOptionsLib|SamsungPkg/Library/PlatformBootOptionsLib/PlatformBootOptionsLib.inf
   ErrataPatchesLib|SamsungPkg/Library/ErrataPatchesLib/ErrataPatchesLib.inf
 
 [Components]
@@ -96,3 +97,8 @@
   # Custom Drivers
   #
   SamsungPkg/Drivers/HypLoaderDxe/HypLoaderDxe.inf
+
+  #
+  # Applications
+  #
+  SamsungPkg/Applications/FastbootApp/FastbootApp.inf
