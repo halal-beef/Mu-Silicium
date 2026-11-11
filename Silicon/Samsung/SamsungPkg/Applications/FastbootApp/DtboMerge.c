@@ -181,6 +181,306 @@ DtEntryCopy (
   return EFI_SUCCESS;
 }
 
+//
+// libfdt's FdtAddSubnode places every new Node directly behind its Parent's Properties,
+// which is in Front of the Parent's existing Children. Applying an Overlay therefore
+// Reverses the Order of every Group of Nodes it adds (and of the Fragments themselves).
+// Order is Significant for some Drivers (the Exynos7885 Sound Card matches the Children
+// of /sound to its DAI Link Table by Position), so the Children inside each Fragment are
+// Reversed once Up Front, which makes the Insertion Order come out as the Overlay Defines it.
+// The Fragments themselves are not Touched, their Order decides which one Wins on Conflicts.
+//
+#define DT_TAG_BEGIN_NODE  0x1
+#define DT_TAG_END_NODE    0x2
+#define DT_TAG_PROP        0x3
+#define DT_TAG_NOP         0x4
+#define DT_MAX_DEPTH       64
+
+STATIC
+UINT32
+DtTagAt (
+  IN CONST UINT8 *Base,
+  IN UINT32       Pos)
+{
+  return SwapBytes32 (*(CONST UINT32 *)(Base + Pos));
+}
+
+// Length of a BEGIN_NODE Tag incl. its padded Name, 0 if Malformed.
+STATIC
+UINT32
+DtBeginLen (
+  IN CONST UINT8 *Base,
+  IN UINT32       Size,
+  IN UINT32       Pos)
+{
+  UINT32  Len;
+
+  if ((UINT64)Pos + 4 > Size) {
+    return 0;
+  }
+
+  for (Len = 0; (UINT64)Pos + 4 + Len < Size && Base[Pos + 4 + Len] != 0; Len++) {
+  }
+
+  if ((UINT64)Pos + 4 + Len >= Size) {
+    return 0;
+  }
+
+  Len = 4 + ALIGN_VALUE (Len + 1, 4);
+
+  return ((UINT64)Pos + Len > Size) ? 0 : Len;
+}
+
+// Length of a PROP Tag incl. its Data, 0 if Malformed.
+STATIC
+UINT32
+DtPropLen (
+  IN CONST UINT8 *Base,
+  IN UINT32       Size,
+  IN UINT32       Pos)
+{
+  UINT64  Len;
+
+  if ((UINT64)Pos + 12 > Size) {
+    return 0;
+  }
+
+  Len = 12 + ALIGN_VALUE ((UINT64)SwapBytes32 (*(CONST UINT32 *)(Base + Pos + 4)), 4);
+
+  return ((UINT64)Pos + Len > Size) ? 0 : (UINT32)Len;
+}
+
+// Skips one complete Node (BEGIN_NODE .. matching END_NODE) at *Pos, FALSE if Malformed.
+STATIC
+BOOLEAN
+DtSkipNode (
+  IN     CONST UINT8 *Base,
+  IN     UINT32       Size,
+  IN OUT UINT32      *Pos)
+{
+  UINT32  Scan  = *Pos;
+  UINT32  Level = 0;
+  UINT32  Tag;
+  UINT32  Len;
+
+  do {
+    if ((UINT64)Scan + 4 > Size) {
+      return FALSE;
+    }
+
+    Tag = DtTagAt (Base, Scan);
+
+    if (Tag == DT_TAG_BEGIN_NODE) {
+      Len = DtBeginLen (Base, Size, Scan);
+      Level++;
+    } else if (Tag == DT_TAG_PROP) {
+      Len = DtPropLen (Base, Size, Scan);
+    } else if (Tag == DT_TAG_END_NODE) {
+      Len = 4;
+      if (Level == 0) {
+        return FALSE;
+      }
+
+      Level--;
+    } else if (Tag == DT_TAG_NOP) {
+      Len = 4;
+    } else {
+      return FALSE;
+    }
+
+    if (Len == 0) {
+      return FALSE;
+    }
+
+    Scan += Len;
+  } while (Level != 0);
+
+  *Pos = Scan;
+
+  return TRUE;
+}
+
+// Rewrites the Node at *Pos into Dst with the Children of every Node below the Root Reversed.
+// The Output has exactly the Size of the Input. Advances *Pos behind the Node.
+STATIC
+BOOLEAN
+DtReverseNode (
+  IN     CONST UINT8 *Base,
+  IN     UINT32       Size,
+  IN OUT UINT32      *Pos,
+  OUT    UINT8       *Dst,
+  OUT    UINT32      *Written,
+  IN     UINT32       Depth)
+{
+  UINT32   P = *Pos;
+  UINT32   W;
+  UINT32   Len;
+  UINT32   Tag;
+  UINT32   Count   = 0;
+  UINT32   NopCnt  = 0;
+  UINT32   Index;
+  UINT32   Scan;
+  UINT32  *Kids    = NULL;
+  BOOLEAN  Result  = FALSE;
+
+  if (Depth > DT_MAX_DEPTH) {
+    return FALSE;
+  }
+
+  Len = DtBeginLen (Base, Size, P);
+  if (Len == 0) {
+    return FALSE;
+  }
+
+  CopyMem (Dst, Base + P, Len);
+  W  = Len;
+  P += Len;
+
+  // Properties (and NOPs among them) stay in Place.
+  for (;;) {
+    if ((UINT64)P + 4 > Size) {
+      return FALSE;
+    }
+
+    Tag = DtTagAt (Base, P);
+
+    if (Tag == DT_TAG_NOP) {
+      Len = 4;
+    } else if (Tag == DT_TAG_PROP) {
+      Len = DtPropLen (Base, Size, P);
+      if (Len == 0) {
+        return FALSE;
+      }
+    } else {
+      break;
+    }
+
+    CopyMem (Dst + W, Base + P, Len);
+    W += Len;
+    P += Len;
+  }
+
+  // Pass 1: Count the Children, find the END_NODE of this Node.
+  for (Scan = P; ; ) {
+    if ((UINT64)Scan + 4 > Size) {
+      return FALSE;
+    }
+
+    Tag = DtTagAt (Base, Scan);
+
+    if (Tag == DT_TAG_NOP) {
+      NopCnt++;
+      Scan += 4;
+    } else if (Tag == DT_TAG_BEGIN_NODE) {
+      if (!DtSkipNode (Base, Size, &Scan)) {
+        return FALSE;
+      }
+
+      Count++;
+    } else if (Tag == DT_TAG_END_NODE) {
+      break;
+    } else {
+      return FALSE;
+    }
+  }
+
+  // Scan is now at this Node's END_NODE.
+  if (Count != 0) {
+    Kids = AllocatePool (Count * sizeof (UINT32));
+    if (Kids == NULL) {
+      return FALSE;
+    }
+
+    // Pass 2: Remember where each Child starts.
+    Index = 0;
+    for (Len = P; Len < Scan; ) {
+      if (DtTagAt (Base, Len) == DT_TAG_NOP) {
+        Len += 4;
+      } else {
+        Kids[Index++] = Len;
+        DtSkipNode (Base, Size, &Len);
+      }
+    }
+
+    // Emit Last to First. The Root's Children (the Fragments) keep their Order, they
+    // have to be Applied as Written (a later Fragment overrides an earlier one).
+    for (Index = 0; Index < Count; Index++) {
+      UINT32  KidPos = Kids[(Depth == 0) ? Index : (Count - 1 - Index)];
+      UINT32  Used   = 0;
+
+      if (!DtReverseNode (Base, Size, &KidPos, Dst + W, &Used, Depth + 1)) {
+        goto Done;
+      }
+
+      W += Used;
+    }
+  }
+
+  // NOPs between Children are moved behind them, so the Size stays exact.
+  for (Index = 0; Index < NopCnt; Index++) {
+    *(UINT32 *)(Dst + W) = SwapBytes32 (DT_TAG_NOP);
+    W += 4;
+  }
+
+  CopyMem (Dst + W, Base + Scan, 4);
+  W += 4;
+
+  *Pos     = Scan + 4;
+  *Written = W;
+  Result   = TRUE;
+
+Done:
+  if (Kids != NULL) {
+    FreePool (Kids);
+  }
+
+  return Result;
+}
+
+// Reverses the Children of every Node below the Root in the Blob, in Place. The Blob keeps its Size
+// and Layout, only the Order of the Nodes inside the Structure Block changes.
+STATIC
+EFI_STATUS
+DtReverseChildren (IN OUT VOID *Fdt)
+{
+  UINT8    *Struct = (UINT8 *)Fdt + FdtOffsetDtStruct (Fdt);
+  UINT32    Size   = FdtSizeDtStruct (Fdt);
+  UINT32    Pos    = 0;
+  UINT32    Start;
+  UINT32    Used   = 0;
+  UINT8    *Copy;
+  UINTN     Pages;
+  BOOLEAN   Ok;
+
+  while ((UINT64)Pos + 4 <= Size && DtTagAt (Struct, Pos) == DT_TAG_NOP) {
+    Pos += 4;
+  }
+
+  if ((UINT64)Pos + 4 > Size || DtTagAt (Struct, Pos) != DT_TAG_BEGIN_NODE) {
+    return EFI_COMPROMISED_DATA;
+  }
+
+  Pages = EFI_SIZE_TO_PAGES (Size);
+  Copy  = AllocatePages (Pages);
+  if (Copy == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  ZeroMem (Copy, EFI_PAGES_TO_SIZE (Pages));
+
+  Start = Pos;
+  Ok    = DtReverseNode (Struct, Size, &Pos, Copy, &Used, 0) && Used == Pos - Start;
+
+  // The Tail behind the Root (FDT_END) is Untouched.
+  if (Ok) {
+    CopyMem (Struct + Start, Copy, Used);
+  }
+
+  FreePages (Copy, Pages);
+
+  return Ok ? EFI_SUCCESS : EFI_COMPROMISED_DATA;
+}
+
 EFI_STATUS
 DtboMergeForRevision (
   IN  UINT32  Rev,
@@ -277,6 +577,15 @@ DtboMergeForRevision (
     Status = DtEntryCopy (&Dtbo, Entry, 0, &Overlay, &OverlayPages, &OverlaySize);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "DtboMerge: Bad Overlay %u: %r\n", Index, Status));
+      goto Exit;
+    }
+
+    // Pre-Reverse the Overlay, FdtOverlayApply's Insertion Reverses it Back.
+    Status = DtReverseChildren (Overlay);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((EFI_D_ERROR, "DtboMerge: Overlay %u: Child Reorder failed: %r\n", Index, Status));
+      FreePages (Overlay, OverlayPages);
+      Overlay = NULL;
       goto Exit;
     }
 
