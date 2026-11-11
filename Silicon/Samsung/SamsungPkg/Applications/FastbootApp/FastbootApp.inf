@@ -8,10 +8,8 @@
 
 [Sources]
   FastbootApp.c
+  BootLinux.c
   DtboMerge.c
-  DtboMerge.h
-  DtTable.h
-  FastbootApp.h
   FastbootCommands.c
   FastbootStorage.c
   FastbootUsb.c
@@ -25,6 +23,7 @@
 [LibraryClasses]
   BaseLib
   BaseMemoryLib
+  CacheMaintenanceLib
   DebugLib
   FdtLib
   MemoryAllocationLib
