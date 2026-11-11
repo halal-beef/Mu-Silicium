@@ -7,6 +7,7 @@
 #include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
+#include "BootLinux.h"
 #include "DtboMerge.h"
 #include "FastbootApp.h"
 #include "FastbootCommands.h"
@@ -347,6 +348,31 @@ CmdContinue (IN CONST CHAR8 *Arg)
 
 STATIC
 VOID
+CmdBoot (IN CONST CHAR8 *Arg)
+{
+  BOOT_LINUX_CTX  Ctx;
+  CONST CHAR8    *Reason;
+  EFI_STATUS      Status;
+
+  if (gFb.DownloadBuf == NULL || gFb.DownloadReceived != gFb.DownloadSize || gFb.DownloadSize == 0) {
+    FB_FAIL ("no image downloaded");
+    return;
+  }
+
+  Status = BootLinuxPrepare (gFb.DownloadBuf, gFb.DownloadSize, &Ctx, &Reason);
+  FbDropDownload ();
+
+  if (EFI_ERROR (Status)) {
+    FB_FAIL ("boot failed: %a (%r)", Reason, Status);
+    return;
+  }
+
+  FB_OKAY ("");
+  BootLinuxExecute (&Ctx);
+}
+
+STATIC
+VOID
 CmdSetActive (IN CONST CHAR8 *Arg)
 {
   FB_FAIL ("device has no A/B slots");
@@ -415,6 +441,7 @@ STATIC CONST FB_COMMAND  mCommands[] = {
   { "oem ",               FALSE, CmdOem       },
   { "set_active:",        FALSE, CmdSetActive },
   { "continue",           TRUE,  CmdContinue  },
+  { "boot",               TRUE,  CmdBoot       },
   { "reboot",             TRUE,  CmdReboot    },
   { "reboot-bootloader",  TRUE,  CmdReboot    },
   { "poweroff",           TRUE,  CmdPoweroff  },
