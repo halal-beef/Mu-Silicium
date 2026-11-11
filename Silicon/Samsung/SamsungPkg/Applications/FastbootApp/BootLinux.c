@@ -488,7 +488,7 @@ BootLinuxExecute (IN BOOT_LINUX_CTX *Ctx)
   ArmInvalidateInstructionCache ();
   ArmDisableCachesAndMmu ();
 
-  Entry (Dtb, 0, 0, 0);
+  Entry (Dtb, 0x80000000, 0x80080000 + 0x80000000, 0);
 
   CpuDeadLoop ();
   return;
