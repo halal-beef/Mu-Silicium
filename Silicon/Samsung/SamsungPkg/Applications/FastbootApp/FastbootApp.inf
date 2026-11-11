@@ -8,6 +8,9 @@
 
 [Sources]
   FastbootApp.c
+  DtboMerge.c
+  DtboMerge.h
+  DtTable.h
   FastbootApp.h
   FastbootCommands.c
   FastbootStorage.c
@@ -23,6 +26,7 @@
   BaseLib
   BaseMemoryLib
   DebugLib
+  FdtLib
   MemoryAllocationLib
   PcdLib
   PrintLib
