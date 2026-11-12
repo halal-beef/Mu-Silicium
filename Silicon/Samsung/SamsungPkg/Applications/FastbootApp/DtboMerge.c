@@ -389,9 +389,8 @@ Done:
   return Result;
 }
 
-STATIC
 EFI_STATUS
-DtReverseChildren (IN OUT VOID *Fdt)
+DtboReverseChildren (IN OUT VOID *Fdt)
 {
   UINT8    *Struct = (UINT8 *)Fdt + FdtOffsetDtStruct (Fdt);
   UINT32    Size   = FdtSizeDtStruct (Fdt);
@@ -525,7 +524,7 @@ DtboMergeForRevision (
       goto Exit;
     }
 
-    Status = DtReverseChildren (Overlay);
+    Status = DtboReverseChildren (Overlay);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "DtboMerge: Overlay %u: Child Reorder failed: %r\n", Index, Status));
       FreePages (Overlay, OverlayPages);

@@ -28,4 +28,9 @@ DtboMergeForRevision (
   OUT UINTN  *MergedSize
   );
 
+EFI_STATUS
+DtboReverseChildren (
+  IN OUT VOID *Fdt
+  );
+
 #endif /* __DTBO_MERGE_H__ */

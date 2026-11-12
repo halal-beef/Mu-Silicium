@@ -10,6 +10,7 @@
 #include <Library/UefiRuntimeServicesTableLib.h>
 
 #include "BootLinux.h"
+#include "DtTable.h"
 #include "DtboMerge.h"
 #include "FastbootApp.h"
 #include "FastbootUsb.h"
@@ -138,6 +139,45 @@ BlAllocateAny (
 }
 
 STATIC
+EFI_STATUS
+BlAllocateBelow (
+  IN OUT BOOT_LINUX_CTX       *Ctx,
+  IN     UINT64                Size,
+  IN     UINT64                Alignment,
+  IN     EFI_PHYSICAL_ADDRESS  Limit,
+  OUT    EFI_PHYSICAL_ADDRESS  *Address)
+{
+  EFI_PHYSICAL_ADDRESS RawBase;
+  UINT64               AllocationSize;
+  UINTN                Pages;
+  EFI_STATUS            Status;
+
+  if (Size == 0 || Alignment == 0 || (Alignment & (Alignment - 1)) != 0 ||
+      Size > MAX_UINT64 - Alignment + 1) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  AllocationSize = Size + Alignment - 1;
+  if (Limit < AllocationSize || Limit == 0) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Pages          = EFI_SIZE_TO_PAGES ((UINTN)AllocationSize);
+  RawBase        = Limit - 1;
+
+  Status = gBS->AllocatePages (AllocateMaxAddress, EfiLoaderData, Pages, &RawBase);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  *Address = ALIGN_VALUE (RawBase, Alignment);
+  DEBUG ((EFI_D_WARN, "BootLinux: Allocating 0x%lx..0x%lx (%u Pages)\n",
+          *Address, *Address + Size, Pages));
+
+  return BlRecord (Ctx, RawBase, Pages);
+}
+
+STATIC
 INT32
 BlSetU64 (
   IN VOID        *Fdt,
@@ -187,11 +227,112 @@ BlFillChosen (
 }
 
 STATIC
+INT32
+BlApplyRecoveryDtbo (
+  IN VOID        *Fdt,
+  IN CONST VOID  *Data,
+  IN UINT32      Size,
+  IN UINT32      Rev)
+{
+  CONST DT_TABLE_HEADER *Header;
+  CONST DT_TABLE_ENTRY  *Entry;
+  UINT32                 Total;
+  UINT32                 HeaderSize;
+  UINT32                 EntrySize;
+  UINT32                 Count;
+  UINT32                 EntriesOffset;
+  UINT32                 Index;
+  UINT32                 Matches;
+  UINT32                 Offset;
+  UINT32                 EntryDtbSize;
+  UINT8                 *Overlay;
+  UINTN                  OverlayPages;
+  INT32                  Status;
+
+  if (Size >= sizeof (FDT_HEADER) && FdtCheckHeader (Data) == 0) {
+    if (FdtTotalSize (Data) > Size) {
+      return -FDT_ERR_TRUNCATED;
+    }
+
+    return FdtOverlayApply (Fdt, (VOID *)Data);
+  }
+
+  if (Size < sizeof (DT_TABLE_HEADER)) {
+    return -FDT_ERR_BADMAGIC;
+  }
+
+  Header        = (CONST DT_TABLE_HEADER *)Data;
+  Total         = SwapBytes32 (Header->TotalSize);
+  HeaderSize    = SwapBytes32 (Header->HeaderSize);
+  EntrySize     = SwapBytes32 (Header->DtEntrySize);
+  Count         = SwapBytes32 (Header->DtEntryCount);
+  EntriesOffset = SwapBytes32 (Header->DtEntriesOffset);
+
+  if (SwapBytes32 (Header->Magic) != DT_TABLE_MAGIC ||
+      Total > Size ||
+      HeaderSize < sizeof (DT_TABLE_HEADER) ||
+      EntrySize < sizeof (DT_TABLE_ENTRY) ||
+      Count == 0 ||
+      (UINT64)EntriesOffset + (UINT64)Count * EntrySize > Total) {
+    return -FDT_ERR_BADMAGIC;
+  }
+
+  Matches = 0;
+  for (Index = 0; Index < Count; Index++) {
+    Entry        = (CONST DT_TABLE_ENTRY *)((CONST UINT8 *)Data + EntriesOffset + (UINTN)Index * EntrySize);
+    Offset       = SwapBytes32 (Entry->DtOffset);
+    EntryDtbSize = SwapBytes32 (Entry->DtSize);
+
+    if (EntryDtbSize < sizeof (FDT_HEADER) ||
+        (UINT64)Offset + EntryDtbSize > Total) {
+      return -FDT_ERR_BADSTRUCTURE;
+    }
+
+    if ((SwapBytes32 (Entry->Custom[0]) != 0 || SwapBytes32 (Entry->Custom[1]) != 0) &&
+        (Rev < SwapBytes32 (Entry->Custom[0]) || Rev > SwapBytes32 (Entry->Custom[1]))) {
+      continue;
+    }
+
+    OverlayPages = EFI_SIZE_TO_PAGES (EntryDtbSize);
+    Overlay      = AllocatePages (OverlayPages);
+    if (Overlay == NULL) {
+      return -FDT_ERR_NOSPACE;
+    }
+
+    CopyMem (Overlay, (CONST UINT8 *)Data + Offset, EntryDtbSize);
+    if (FdtCheckHeader (Overlay) != 0 || FdtTotalSize (Overlay) > EntryDtbSize) {
+      FreePages (Overlay, OverlayPages);
+      return -FDT_ERR_BADMAGIC;
+    }
+
+    Status = DtboReverseChildren (Overlay);
+    if (EFI_ERROR (Status)) {
+      FreePages (Overlay, OverlayPages);
+      return -FDT_ERR_BADSTRUCTURE;
+    }
+
+    Status = FdtOverlayApply (Fdt, Overlay);
+    FreePages (Overlay, OverlayPages);
+    if (Status < 0) {
+      DEBUG ((EFI_D_ERROR, "BootLinux: recovery overlay %u: %a\n", Index, FdtStrerror (Status)));
+      return Status;
+    }
+
+    Matches++;
+    FB_INFO ("recovery overlay: entry %u (%u bytes)", Index, EntryDtbSize);
+  }
+
+  return Matches == 0 ? -FDT_ERR_NOTFOUND : 0;
+}
+
+STATIC
 EFI_STATUS
 BlBuildDtb (
   IN OUT BOOT_LINUX_CTX *Ctx,
   IN     UINT64          RamdiskStart,
   IN     UINT64           RamdiskSize,
+  IN     CONST VOID      *RecoveryDtbo,
+  IN     UINT32          RecoveryDtboSize,
   OUT    CONST CHAR8    **Reason)
 {
   UINT8                *Merged     = NULL;
@@ -207,7 +348,10 @@ BlBuildDtb (
     return Status;
   }
 
-  Room  = ALIGN_VALUE (MergedSize + BOOT_DTB_SLACK, SIZE_4KB);
+  Room  = ALIGN_VALUE (
+            MergedSize + BOOT_DTB_SLACK + RecoveryDtboSize,
+            SIZE_4KB
+            );
 
   Status = BlAllocate (Ctx, Room, SIZE_4KB, BOOT_DTB_ADDRESS);
 
@@ -228,6 +372,22 @@ BlBuildDtb (
     DEBUG ((EFI_D_ERROR, "BootLinux: FdtOpenInto: %a\n", FdtStrerror (FdtStatus)));
     *Reason = "dtb open failed";
     return EFI_DEVICE_ERROR;
+  }
+
+  if (RecoveryDtbo != NULL && RecoveryDtboSize != 0) {
+    FdtStatus = BlApplyRecoveryDtbo (
+                  (VOID *)(UINTN)Dtb,
+                  RecoveryDtbo,
+                  RecoveryDtboSize,
+                  mHwRev
+                  );
+    if (FdtStatus < 0) {
+      DEBUG ((EFI_D_ERROR, "BootLinux: recovery DTBO: %a\n", FdtStrerror (FdtStatus)));
+      *Reason = "recovery dtbo failed";
+      return EFI_COMPROMISED_DATA;
+    }
+
+    FB_INFO ("recovery dtbo: %u bytes", RecoveryDtboSize);
   }
 
   FdtStatus = BlFillChosen ((VOID *)(UINTN)Dtb, RamdiskStart, RamdiskSize);
@@ -264,6 +424,8 @@ BootLinuxPrepare (
   UINT64                         KernelOff;
   UINT64                         RamdiskOff;
   UINT64                         SecondOff;
+  CONST VOID                    *RecoveryDtbo;
+  UINT32                         RecoveryDtboSize;
   UINT64                         Footprint;
   EFI_PHYSICAL_ADDRESS           RamdiskBase;
   EFI_PHYSICAL_ADDRESS           SecondBase;
@@ -316,6 +478,19 @@ BootLinuxPrepare (
     return EFI_COMPROMISED_DATA;
   }
 
+  RecoveryDtbo     = NULL;
+  RecoveryDtboSize = 0;
+  if (Hdr->HeaderVersion == 1 && Hdr->RecoveryDtboSize != 0) {
+    if (Hdr->RecoveryDtboOffset > ImageSize ||
+        Hdr->RecoveryDtboSize > ImageSize - Hdr->RecoveryDtboOffset) {
+      *Reason = "recovery dtbo out of bounds";
+      return EFI_COMPROMISED_DATA;
+    }
+
+    RecoveryDtbo     = Bytes + Hdr->RecoveryDtboOffset;
+    RecoveryDtboSize = Hdr->RecoveryDtboSize;
+  }
+
   Footprint = KernelSize;
 
   if (KernelSize >= ARM64_IMAGE_HDR_SIZE &&
@@ -340,13 +515,18 @@ BootLinuxPrepare (
   FB_INFO ("kernel: 0x%lx (%u bytes)", Ctx->Entry, (UINT32)KernelSize);
 
   if (RamdiskSize != 0) {
-    Status = BlAllocate (Ctx, RamdiskSize, EFI_PAGE_SIZE, BOOT_RAMDISK_ADDRESS);
+    Status = BlAllocateBelow (
+               Ctx,
+               RamdiskSize,
+               EFI_PAGE_SIZE,
+               BOOT_DTB_ADDRESS,
+               &RamdiskBase
+               );
     if (EFI_ERROR (Status)) {
-      *Reason = "ramdisk address unavailable";
+      *Reason = "no memory for ramdisk";
       goto Fail;
     }
 
-    RamdiskBase = BOOT_RAMDISK_ADDRESS;
     CopyMem ((VOID *)(UINTN)RamdiskBase, Bytes + RamdiskOff, (UINTN)RamdiskSize);
 
     FB_INFO ("ramdisk: 0x%lx (%u bytes)", RamdiskBase, (UINT32)RamdiskSize);
@@ -366,7 +546,14 @@ BootLinuxPrepare (
     FB_INFO ("second: 0x%lx (%u bytes)", SecondBase, (UINT32)SecondSize);
   }
 
-  Status = BlBuildDtb (Ctx, RamdiskBase, RamdiskSize, Reason);
+  Status = BlBuildDtb (
+             Ctx,
+             RamdiskBase,
+             RamdiskSize,
+             RecoveryDtbo,
+             RecoveryDtboSize,
+             Reason
+             );
   if (EFI_ERROR (Status)) {
     goto Fail;
   }
