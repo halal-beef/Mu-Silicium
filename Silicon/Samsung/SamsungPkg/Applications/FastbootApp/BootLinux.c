@@ -178,7 +178,6 @@ BlFillChosen (
     return 0;
   }
 
-  // 64 Bit Cells, the End is the first Byte after the Ramdisk.
   Status = BlSetU64 (Fdt, Node, "linux,initrd-start", RamdiskStart);
   if (Status < 0) {
     return Status;
@@ -187,7 +186,6 @@ BlFillChosen (
   return BlSetU64 (Fdt, Node, "linux,initrd-end", RamdiskStart + RamdiskSize);
 }
 
-// Builds the Merged DTB for the Current HW Revision at Samsung's fixed address.
 STATIC
 EFI_STATUS
 BlBuildDtb (
