@@ -15,7 +15,7 @@
 #include "FastbootApp.h"
 #include "FastbootUsb.h"
 
-STATIC UINT32  mHwRev = 4;
+STATIC UINT32  mHwRev = 0xFFFFFFFF;
 
 VOID
 BootLinuxSetHwRev (IN UINT32 Rev)
@@ -190,7 +190,6 @@ BlSetU64 (
   return FdtSetProp (Fdt, Node, Name, &Be, sizeof (Be));
 }
 
-// Sets /chosen/bootargs and, when a Ramdisk is Loaded, /chosen/linux,initrd-start and -end.
 STATIC
 INT32
 BlFillChosen (
@@ -209,7 +208,12 @@ BlFillChosen (
     }
   }
 
-  Status = FdtSetProp (Fdt, Node, "bootargs", BOOT_HARDCODED_BOOTARGS, sizeof (BOOT_HARDCODED_BOOTARGS));
+  if (gBootArgsSize == 0) {
+    DEBUG ((EFI_D_ERROR, "BootLinux: initial bootargs were not saved\n"));
+    return -FDT_ERR_NOTFOUND;
+  }
+
+  Status = FdtSetProp (Fdt, Node, "bootargs", gBootArgs, (INT32)gBootArgsSize);
   if (Status < 0) {
     return Status;
   }
