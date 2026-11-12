@@ -35,6 +35,7 @@
   UefiRuntimeServicesTableLib
 
 [Protocols]
+  gEfiGpioProtocolGuid
   gEfiUsbFunctionIoProtocolGuid
   gEfiBlockIoProtocolGuid
   gEfiEraseBlockProtocolGuid

@@ -4,6 +4,7 @@
 #include <Library/PcdLib.h>
 #include <Library/PrintLib.h>
 
+#include "BootLinux.h"
 #include "FastbootApp.h"
 #include "FastbootStorage.h"
 #include "FastbootUsb.h"
@@ -116,6 +117,22 @@ GetHasSlot (
   return TRUE;
 }
 
+STATIC
+BOOLEAN
+GetHardwareRevision (
+  IN  CONST CHAR8 *Arg OPTIONAL,
+  OUT CHAR8       *Out,
+  IN  UINTN        OutSize)
+{
+  UINT32 HwRev = BootLinuxGetHwRev();
+  if (HwRev == 0xFFFFFFFF)
+    AsciiSPrint (Out, OutSize, "unknown");
+  else
+    AsciiSPrint (Out, OutSize, "%u", HwRev);
+
+  return TRUE;
+}
+
 STATIC CONST FB_VAR  mVars[] = {
   // Name                  InAll  Value              Get
   { "version",             TRUE,  FB_VERSION,        NULL                    },
@@ -133,6 +150,7 @@ STATIC CONST FB_VAR  mVars[] = {
   { "partition-size",      FALSE, NULL,              GetPartitionSize        },
   { "partition-type",      FALSE, NULL,              GetPartitionType        },
   { "has-slot",            FALSE, NULL,              GetHasSlot              },
+  { "hardware-revision",   TRUE,  NULL,              GetHardwareRevision     },
 };
 
 STATIC

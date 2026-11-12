@@ -3,6 +3,7 @@
 
 #include <Uefi.h>
 
+#include <Protocol/EFIGpio.h>
 #include <Protocol/UsbFunctionIo.h>
 
 #define FB_VERSION           "0.4"
@@ -48,4 +49,5 @@ typedef struct {
 } FB_CTX;
 
 extern FB_CTX gFb;
+extern EFI_GPIO_PROTOCOL *gGpio;
 #endif /* _FASTBOOT_APP_H_ */
