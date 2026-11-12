@@ -24,4 +24,4 @@ append_dtb         = false
 [boot_image]
 header_version = 1
 os_version = "11.0.0"
-os_patch_level = "2022-11"
+os_patch_level = "2022-12"
