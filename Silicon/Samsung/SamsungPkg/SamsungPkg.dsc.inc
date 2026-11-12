@@ -54,6 +54,11 @@
   UsiLib|SamsungNullPkg/Library/UsiNullLib/UsiNullLib.inf
 
   #
+  # Fastboot Preboot Libraries
+  #
+  PlatformPrebootLib|SamsungNullPkg/Library/PlatformPrebootLibNull/PlatformPrebootLibNull.inf
+
+  #
   # BDS Libraries
   #
   PlatformBootOptionsLib|SamsungPkg/Library/PlatformBootOptionsLib/PlatformBootOptionsLib.inf
