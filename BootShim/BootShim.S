@@ -28,6 +28,29 @@ _CopyLoop:
   stp   x2, x3, [x5], #16
   subs  x6, x6, #16
   b.ne  _CopyLoop
+
+  /* Make the copied FD visible to instruction fetch and to MMU-off data reads */
+  ldr   x0, =FD_BASE
+  ldr   x1, =FD_SIZE
+  add   x1, x0, x1              /* end address */
+  mrs   x3, ctr_el0
+  ubfx  x3, x3, #16, #4         /* DminLine: log2(words) */
+  mov   x2, #4
+  lsl   x3, x2, x3              /* D-cache line size in bytes */
+  sub   x2, x3, #1
+  bic   x4, x0, x2              /* align start down to a line */
+
+_CleanLoop:
+  dc    cvac, x4                /* clean to PoC */
+  add   x4, x4, x3
+  cmp   x4, x1
+  b.lo  _CleanLoop
+
+  dsb   ish
+  ic    ialluis                 /* drop any stale I-cache lines */
+  dsb   ish
+  isb
+
   ldr   x5, =FD_BASE
 
 _Entry:
