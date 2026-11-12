@@ -69,6 +69,9 @@ FbExitKeyPressed (VOID)
   return (Key.ScanCode == SCAN_ESC || Key.UnicodeChar == CHAR_CARRIAGE_RETURN);
 }
 
+VOID
+BootFromPartition (BOOLEAN InFastboot);
+
 EFI_STATUS
 EFIAPI
 FastbootAppEntry (
@@ -95,6 +98,8 @@ FastbootAppEntry (
   }
 
   BootLinuxSetHwRev(PlatformDetectRevision());
+
+  BootFromPartition (FALSE);
 
   Status = FbUsbInit ();
   if (EFI_ERROR (Status)) {

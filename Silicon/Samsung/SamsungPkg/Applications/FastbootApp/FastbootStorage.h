@@ -5,6 +5,7 @@
 #define __FASTBOOT_STORAGE_H__
 
 #define FB_IO_CHUNK            SIZE_1MB
+#define FB_BOOT_SPLIT_SIZE     (2100 * SIZE_1KB)
 
 // Sparse
 #define SPARSE_HEADER_MAGIC    0xED26FF3A
@@ -19,6 +20,7 @@ typedef VOID (*FB_PARTITION_CALLBACK)(VOID *Context, CONST CHAR8 *Name, UINT64 S
 typedef struct {
   EFI_BLOCK_IO_PROTOCOL    *BlockIo;
   EFI_ERASE_BLOCK_PROTOCOL *Erase;
+  UINT64                    BaseOffset;
   UINT64                    Size;
 } FB_PARTITION;
 
