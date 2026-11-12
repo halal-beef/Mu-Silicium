@@ -8,6 +8,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
+#include <Library/PlatformPrebootLib.h>
 
 #include "BootLinux.h"
 #include "DtTable.h"
@@ -623,8 +624,7 @@ BootLinuxExecute (IN BOOT_LINUX_CTX *Ctx)
       );
   }
 
-  *(UINT32 *)(0x80001004) = 0; // disable kaslr
-  *(UINT32 *)(0x14860000 + 0x70) = 0x3070; // decon disable
+  PlatformLastMinuteHandoff();
 
   ArmInvalidateInstructionCache ();
   ArmDisableCachesAndMmu ();

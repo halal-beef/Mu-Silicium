@@ -83,6 +83,11 @@
   PlatformMshcLib|S5E7885Pkg/Library/PlatformMshcLib/PlatformMshcLib.inf
 
   #
+  # Fastboot Preboot Libraries
+  #
+  PlatformPrebootLib|S5E7885Pkg/Library/PlatformPrebootLib/PlatformPrebootLib.inf
+
+  #
   # USB Libraries
   #
   PlatformUsbfnLib|S5E7885Pkg/Library/PlatformUsbfnLib/PlatformUsbfnLib.inf

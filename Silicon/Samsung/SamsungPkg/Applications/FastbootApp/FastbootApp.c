@@ -5,6 +5,7 @@
 #include <Library/PcdLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Library/PlatformPrebootLib.h>
 
 #include "FastbootApp.h"
 #include "BootLinux.h"
@@ -76,8 +77,6 @@ FastbootAppEntry (
 {
   EFI_STATUS Status;
   UINT32     IdleCount = 0;
-  UINT32     Rev = 0;
-  BOOLEAN    GpioState;
 
   gBS->SetWatchdogTimer (0, 0, 0, NULL);
 
@@ -95,26 +94,7 @@ FastbootAppEntry (
     return Status;
   }
 
-  Status = gBS->LocateProtocol (&gEfiGpioProtocolGuid, NULL, (VOID **)&gGpio);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_WARN, "Fastboot: Exynos GPIO protocol unavailable (%r)\n", Status));
-  }
-  
-  gGpio->GetState (BANK_ID_G, 3, 6, &GpioState);
-  Rev |= (GpioState ? 0x1 : 0x0) << 3;
-
-  gGpio->GetState (BANK_ID_G, 4, 1, &GpioState);
-  Rev |= (GpioState ? 0x1 : 0x0) << 2;
-
-  gGpio->GetState (BANK_ID_G, 4, 0, &GpioState);
-  Rev |= (GpioState ? 0x1 : 0x0) << 1;
-
-  gGpio->GetState (BANK_ID_G, 3, 7, &GpioState);
-  Rev |= (GpioState ? 0x1 : 0x0);
-
-  DEBUG ((EFI_D_WARN, "Fastboot: Hardware revision is 0x%X\n", Rev));
-
-  BootLinuxSetHwRev(Rev);
+  BootLinuxSetHwRev(PlatformDetectRevision());
 
   Status = FbUsbInit ();
   if (EFI_ERROR (Status)) {
