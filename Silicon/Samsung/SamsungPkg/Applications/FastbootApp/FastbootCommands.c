@@ -8,7 +8,6 @@
 #include <Library/UefiRuntimeServicesTableLib.h>
 
 #include "BootLinux.h"
-#include "DtboMerge.h"
 #include "FastbootApp.h"
 #include "FastbootCommands.h"
 #include "FastbootStorage.h"
@@ -53,7 +52,7 @@ CmdGetVar (IN CONST CHAR8 *Name)
   CHAR8 Value[64];
 
   if (AsciiStrCmp (Name, "all") == 0) {
-    FbSendAllVars (TRUE);
+    FbSendAllVars ();
     FB_OKAY ("");
     return;
   }
@@ -378,58 +377,6 @@ CmdSetActive (IN CONST CHAR8 *Arg)
   FB_FAIL ("device has no A/B slots");
 }
 
-// oem merge <rev>: Merge "dt" + "dtbo" for a HW Revision and Stage the Result,
-// fetch it with: fastboot get_staged <file>
-STATIC
-VOID
-CmdOemMerge (IN CONST CHAR8 *RevText)
-{
-  UINT64     Rev;
-  CHAR8     *End;
-  UINT8     *Merged;
-  UINTN      MergedSize;
-  EFI_STATUS Status;
-
-  if (RETURN_ERROR (AsciiStrDecimalToUint64S (RevText, &End, &Rev)) || End == RevText || *End != 0 || Rev > MAX_UINT32) {
-    FB_FAIL ("usage: oem merge <rev>");
-    return;
-  }
-
-  FbDropDownload ();
-
-  Status = DtboMergeForRevision ((UINT32)Rev, &Merged, &MergedSize);
-  if (EFI_ERROR (Status)) {
-    FB_FAIL ("merge failed (%r)", Status);
-    return;
-  }
-
-  gFb.DownloadBuf      = Merged;
-  gFb.DownloadSize     = MergedSize;
-  gFb.DownloadReceived = MergedSize;
-  gFb.Mode             = FbModeCommand;
-
-  FB_OKAY ("staged %u bytes", (UINT32)MergedSize);
-}
-
-STATIC
-VOID
-CmdOem (IN CONST CHAR8 *Command)
-{
-  if (AsciiStrnCmp (Command, "merge ", 6) == 0) {
-    CmdOemMerge (Command + 6);
-    return;
-  }
-
-  if (AsciiStrCmp (Command, "device-info") == 0) {
-    FbSendAllVars (FALSE);
-    FB_INFO ("usb-speed: %u", (UINT32)gFb.Speed);
-    FB_OKAY ("");
-    return;
-  }
-
-  FB_FAIL ("unknown oem command");
-}
-
 STATIC CONST FB_COMMAND  mCommands[] = {
   // Prefix               Exact  Handler
   { "getvar:",            FALSE, CmdGetVar    },
@@ -438,13 +385,12 @@ STATIC CONST FB_COMMAND  mCommands[] = {
   { "fetch:",             FALSE, CmdFetch     },
   { "flash:",             FALSE, CmdFlash     },
   { "erase:",             FALSE, CmdErase     },
-  { "oem ",               FALSE, CmdOem       },
   { "set_active:",        FALSE, CmdSetActive },
   { "continue",           TRUE,  CmdContinue  },
   { "boot",               TRUE,  CmdBoot       },
   { "reboot",             TRUE,  CmdReboot    },
   { "reboot-bootloader",  TRUE,  CmdReboot    },
-  { "poweroff",           TRUE,  CmdPoweroff  },
+  { "oem poweroff",       TRUE,  CmdPoweroff  },
 };
 
 STATIC

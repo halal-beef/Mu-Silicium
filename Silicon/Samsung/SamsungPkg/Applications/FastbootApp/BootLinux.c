@@ -14,20 +14,6 @@
 #include "FastbootApp.h"
 #include "FastbootUsb.h"
 
-#define EXIT_BS_TRIES        8
-#define MEMMAP_SLACK_DESCS   16
-#define BOOT_USB_SETTLE_US   150000
-
-// arm64 Linux Image Header (Documentation/arch/arm64/booting.rst)
-#define ARM64_IMAGE_SIZE_OFFSET  16
-#define ARM64_IMAGE_MAGIC_OFFSET 56
-#define ARM64_IMAGE_MAGIC        0x644D5241  // "ARM\x64"
-#define ARM64_IMAGE_HDR_SIZE     64
-
-STATIC_ASSERT (sizeof (ANDROID_BOOT_IMG_HDR_V1) == 1648, "Android boot header v1 must be 1648 Bytes");
-
-typedef VOID (*BOOT_KERNEL_ENTRY)(UINT64 X0, UINT64 X1, UINT64 X2, UINT64 X3);
-
 STATIC UINT32  mHwRev = 4;
 
 VOID
@@ -239,7 +225,6 @@ BlBuildDtb (
   CopyMem ((VOID *)(UINTN)Dtb, Merged, MergedSize);
   gFb.Usb->FreeTransferBuffer (gFb.Usb, Merged);
 
-  // Grow the Packed Blob into the Slack, Edit it, Pack it again.
   FdtStatus = FdtOpenInto ((VOID *)(UINTN)Dtb, (VOID *)(UINTN)Dtb, (INT32)Room);
   if (FdtStatus < 0) {
     DEBUG ((EFI_D_ERROR, "BootLinux: FdtOpenInto: %a\n", FdtStrerror (FdtStatus)));
@@ -282,7 +267,6 @@ BootLinuxPrepare (
   UINT64                         RamdiskOff;
   UINT64                         SecondOff;
   UINT64                         Footprint;
-  //EFI_PHYSICAL_ADDRESS           KernelBase;
   EFI_PHYSICAL_ADDRESS           RamdiskBase;
   EFI_PHYSICAL_ADDRESS           SecondBase;
   EFI_STATUS                     Status;
@@ -290,9 +274,6 @@ BootLinuxPrepare (
   ZeroMem (Ctx, sizeof (*Ctx));
   *Reason = "";
 
-  //
-  // Header
-  //
   if (ImageSize < ANDROID_BOOT_HDR_V0_SIZE || CompareMem (Hdr->Magic, ANDROID_BOOT_MAGIC, ANDROID_BOOT_MAGIC_SIZE) != 0) {
     *Reason = "not an android boot image";
     return EFI_COMPROMISED_DATA;
@@ -318,9 +299,6 @@ BootLinuxPrepare (
     return EFI_COMPROMISED_DATA;
   }
 
-  //
-  // Layout, every Section Starts on a Page Boundary
-  //
   KernelOff  = PageSize;
   RamdiskOff = KernelOff + BlAlignUp (KernelSize, PageSize);
   SecondOff  = RamdiskOff + BlAlignUp (RamdiskSize, PageSize);
@@ -340,10 +318,6 @@ BootLinuxPrepare (
     return EFI_COMPROMISED_DATA;
   }
 
-  //
-  // Kernel. Not Required to be Linux, but a arm64 Linux Image Tells how much Memory it Needs
-  // past its File Size (BSS), keep that Free so nothing else gets Placed There.
-  //
   Footprint = KernelSize;
 
   if (KernelSize >= ARM64_IMAGE_HDR_SIZE &&
@@ -367,9 +341,6 @@ BootLinuxPrepare (
 
   FB_INFO ("kernel: 0x%lx (%u bytes)", Ctx->Entry, (UINT32)KernelSize);
 
-  //
-  // Ramdisk
-  //
   if (RamdiskSize != 0) {
     Status = BlAllocate (Ctx, RamdiskSize, EFI_PAGE_SIZE, BOOT_RAMDISK_ADDRESS);
     if (EFI_ERROR (Status)) {
@@ -385,9 +356,6 @@ BootLinuxPrepare (
     RamdiskBase = 0;
   }
 
-  //
-  // Second Stage, Loaded as is for Kernels that want it
-  //
   if (SecondSize != 0) {
     Status = BlAllocateAny (Ctx, SecondSize, EFI_PAGE_SIZE, &SecondBase);
     if (EFI_ERROR (Status)) {
@@ -400,9 +368,6 @@ BootLinuxPrepare (
     FB_INFO ("second: 0x%lx (%u bytes)", SecondBase, (UINT32)SecondSize);
   }
 
-  //
-  // DTB
-  //
   Status = BlBuildDtb (Ctx, RamdiskBase, RamdiskSize, Reason);
   if (EFI_ERROR (Status)) {
     goto Fail;
@@ -425,7 +390,6 @@ BootLinuxExecute (IN BOOT_LINUX_CTX *Ctx)
   UINTN                  MapKey;
   UINTN                  DescSize;
   UINT32                 DescVersion;
-  UINTN                  Try;
   UINTN                  Index;
   EFI_STATUS             Status;
   BOOT_KERNEL_ENTRY      Entry = (BOOT_KERNEL_ENTRY)(UINTN)Ctx->Entry;
@@ -433,11 +397,9 @@ BootLinuxExecute (IN BOOT_LINUX_CTX *Ctx)
 
   Print (L"  booting kernel at 0x%lx, dtb at 0x%lx\n", Ctx->Entry, Ctx->Dtb);
 
-  // Stop USB before handing the controller and its state to Linux.
   FbUsbCleanup ();
   gBS->Stall (BOOT_USB_SETTLE_US);
 
-  // Size the Memory Map once with Slack, nothing may Allocate between GetMemoryMap and ExitBootServices.
   MapSize = 0;
   Status  = gBS->GetMemoryMap (&MapSize, NULL, &MapKey, &DescSize, &DescVersion);
   if (Status != EFI_BUFFER_TOO_SMALL) {
@@ -452,28 +414,18 @@ BootLinuxExecute (IN BOOT_LINUX_CTX *Ctx)
 
   Status = EFI_ABORTED;
 
-  for (Try = 0; Try < EXIT_BS_TRIES; Try++) {
-    UINTN Size = MapSize;
+  UINTN Size = MapSize;
 
-    Status = gBS->GetMemoryMap (&Size, Map, &MapKey, &DescSize, &DescVersion);
-    if (EFI_ERROR (Status)) {
-      continue;
-    }
-
-    Status = gBS->ExitBootServices (gImageHandle, MapKey);
-    if (!EFI_ERROR (Status)) {
-      break;
-    }
-  }
-
+  Status = gBS->GetMemoryMap (&Size, Map, &MapKey, &DescSize, &DescVersion);
   if (EFI_ERROR (Status)) {
     goto Reset;
   }
 
-  //
-  // No Firmware Services from here on. Everything the Kernel and DTB Occupy has to Reach
-  // Memory, then MMU and Caches go off and the Kernel gets Control.
-  //
+  Status = gBS->ExitBootServices (gImageHandle, MapKey);
+  if (EFI_ERROR (Status)) {
+    goto Reset;
+  }
+
   ArmDisableInterrupts ();
   for (Index = 0; Index < Ctx->AllocCount; Index++) {
     WriteBackInvalidateDataCacheRange (
@@ -482,19 +434,18 @@ BootLinuxExecute (IN BOOT_LINUX_CTX *Ctx)
       );
   }
 
-  *(UINT32 *)(0x80001004) = 0;
+  *(UINT32 *)(0x80001004) = 0; // disable kaslr
   *(UINT32 *)(0x14860000 + 0x70) = 0x3070; // decon disable
 
   ArmInvalidateInstructionCache ();
   ArmDisableCachesAndMmu ();
 
-  Entry (Dtb, 0x80000000, 0x80080000 + 0x80000000, 0);
+  Entry (Dtb, 0, 0, 0);
 
   CpuDeadLoop ();
   return;
 
 Reset:
-  // The USB Side is Already Down, there is no Way back into Fastboot.
   Print (L"  could not leave boot services (%r), resetting\n", Status);
   gBS->Stall (3000000);
   gRT->ResetSystem (EfiResetCold, EFI_SUCCESS, 0, NULL);
