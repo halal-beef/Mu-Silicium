@@ -189,7 +189,7 @@ FbSendPartitionSize (
 }
 
 VOID
-FbSendAllVars (IN BOOLEAN IncludePartitions)
+FbSendAllVars (VOID)
 {
   CHAR8 Value[64];
   UINTN Index;
@@ -200,7 +200,5 @@ FbSendAllVars (IN BOOLEAN IncludePartitions)
     }
   }
 
-  if (IncludePartitions) {
-    FbEnumeratePartitions (FbSendPartitionSize, NULL);
-  }
+  FbEnumeratePartitions (FbSendPartitionSize, NULL);
 }

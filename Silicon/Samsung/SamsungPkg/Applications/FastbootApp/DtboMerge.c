@@ -10,21 +10,6 @@
 #include "DtTable.h"
 #include "DtboMerge.h"
 
-#define DT_PARTITION_NAME    "dtb"
-#define DT_OVERLAY_PARTITION "dtbo"
-
-// Extra Space for Fixups/new Strings on Top of Base + Overlays.
-#define DT_MERGE_SLACK       SIZE_64KB
-
-typedef struct {
-  UINT8  *Data;       // Page Aligned
-  UINTN   Pages;
-  UINT32  Size;       // TotalSize from Header
-  UINT32  Count;
-  UINT32  EntriesOffset;
-  UINT32  EntrySize;
-} DT_TABLE;
-
 STATIC
 VOID
 DtTableFree (IN DT_TABLE *Table)
@@ -36,7 +21,6 @@ DtTableFree (IN DT_TABLE *Table)
   ZeroMem (Table, sizeof (*Table));
 }
 
-// Reads a whole Table Partition into a Page Aligned Buffer and Validates its Layout.
 STATIC
 EFI_STATUS
 DtTableLoad (
@@ -93,7 +77,6 @@ DtTableLoad (
     return EFI_OUT_OF_RESOURCES;
   }
 
-  // FbReadPartitionData is Limited to FB_IO_CHUNK per Call.
   for (Done = 0; Done < Total; Done += Chunk) {
     Chunk = (UINTN)((Total - Done > FB_IO_CHUNK) ? FB_IO_CHUNK : (Total - Done));
 
@@ -121,7 +104,6 @@ DtTableEntry (
   return (CONST DT_TABLE_ENTRY *)(Table->Data + Table->EntriesOffset + (UINTN)Index * Table->EntrySize);
 }
 
-// Entry Matches when MinRev <= Rev <= MaxRev (Custom[0] / Custom[1], both Inclusive).
 STATIC
 BOOLEAN
 DtEntryMatches (
@@ -131,8 +113,6 @@ DtEntryMatches (
   return (Rev >= SwapBytes32 (Entry->Custom[0]) && Rev <= SwapBytes32 (Entry->Custom[1]));
 }
 
-// Copies an Entry's DTB out of the Table into its own Page Aligned Buffer.
-// Entries are only 4 Byte Aligned inside the Table, libfdt wants 8.
 STATIC
 EFI_STATUS
 DtEntryCopy (
@@ -153,7 +133,6 @@ DtEntryCopy (
     return EFI_COMPROMISED_DATA;
   }
 
-  // Header is only 4 Byte Aligned here, FdtCheckHeader reads u32 Fields so copy first.
   AllocPages = EFI_SIZE_TO_PAGES ((UINTN)Size + ExtraSize);
   Aligned    = AllocatePages (AllocPages);
   if (Aligned == NULL) {
@@ -181,21 +160,6 @@ DtEntryCopy (
   return EFI_SUCCESS;
 }
 
-//
-// libfdt's FdtAddSubnode places every new Node directly behind its Parent's Properties,
-// which is in Front of the Parent's existing Children. Applying an Overlay therefore
-// Reverses the Order of every Group of Nodes it adds (and of the Fragments themselves).
-// Order is Significant for some Drivers (the Exynos7885 Sound Card matches the Children
-// of /sound to its DAI Link Table by Position), so the Children inside each Fragment are
-// Reversed once Up Front, which makes the Insertion Order come out as the Overlay Defines it.
-// The Fragments themselves are not Touched, their Order decides which one Wins on Conflicts.
-//
-#define DT_TAG_BEGIN_NODE  0x1
-#define DT_TAG_END_NODE    0x2
-#define DT_TAG_PROP        0x3
-#define DT_TAG_NOP         0x4
-#define DT_MAX_DEPTH       64
-
 STATIC
 UINT32
 DtTagAt (
@@ -205,7 +169,6 @@ DtTagAt (
   return SwapBytes32 (*(CONST UINT32 *)(Base + Pos));
 }
 
-// Length of a BEGIN_NODE Tag incl. its padded Name, 0 if Malformed.
 STATIC
 UINT32
 DtBeginLen (
@@ -231,7 +194,6 @@ DtBeginLen (
   return ((UINT64)Pos + Len > Size) ? 0 : Len;
 }
 
-// Length of a PROP Tag incl. its Data, 0 if Malformed.
 STATIC
 UINT32
 DtPropLen (
@@ -250,7 +212,6 @@ DtPropLen (
   return ((UINT64)Pos + Len > Size) ? 0 : (UINT32)Len;
 }
 
-// Skips one complete Node (BEGIN_NODE .. matching END_NODE) at *Pos, FALSE if Malformed.
 STATIC
 BOOLEAN
 DtSkipNode (
@@ -300,8 +261,6 @@ DtSkipNode (
   return TRUE;
 }
 
-// Rewrites the Node at *Pos into Dst with the Children of every Node below the Root Reversed.
-// The Output has exactly the Size of the Input. Advances *Pos behind the Node.
 STATIC
 BOOLEAN
 DtReverseNode (
@@ -336,7 +295,6 @@ DtReverseNode (
   W  = Len;
   P += Len;
 
-  // Properties (and NOPs among them) stay in Place.
   for (;;) {
     if ((UINT64)P + 4 > Size) {
       return FALSE;
@@ -360,7 +318,6 @@ DtReverseNode (
     P += Len;
   }
 
-  // Pass 1: Count the Children, find the END_NODE of this Node.
   for (Scan = P; ; ) {
     if ((UINT64)Scan + 4 > Size) {
       return FALSE;
@@ -384,14 +341,12 @@ DtReverseNode (
     }
   }
 
-  // Scan is now at this Node's END_NODE.
   if (Count != 0) {
     Kids = AllocatePool (Count * sizeof (UINT32));
     if (Kids == NULL) {
       return FALSE;
     }
 
-    // Pass 2: Remember where each Child starts.
     Index = 0;
     for (Len = P; Len < Scan; ) {
       if (DtTagAt (Base, Len) == DT_TAG_NOP) {
@@ -402,8 +357,6 @@ DtReverseNode (
       }
     }
 
-    // Emit Last to First. The Root's Children (the Fragments) keep their Order, they
-    // have to be Applied as Written (a later Fragment overrides an earlier one).
     for (Index = 0; Index < Count; Index++) {
       UINT32  KidPos = Kids[(Depth == 0) ? Index : (Count - 1 - Index)];
       UINT32  Used   = 0;
@@ -416,7 +369,6 @@ DtReverseNode (
     }
   }
 
-  // NOPs between Children are moved behind them, so the Size stays exact.
   for (Index = 0; Index < NopCnt; Index++) {
     *(UINT32 *)(Dst + W) = SwapBytes32 (DT_TAG_NOP);
     W += 4;
@@ -437,8 +389,6 @@ Done:
   return Result;
 }
 
-// Reverses the Children of every Node below the Root in the Blob, in Place. The Blob keeps its Size
-// and Layout, only the Order of the Nodes inside the Structure Block changes.
 STATIC
 EFI_STATUS
 DtReverseChildren (IN OUT VOID *Fdt)
@@ -471,7 +421,6 @@ DtReverseChildren (IN OUT VOID *Fdt)
   Start = Pos;
   Ok    = DtReverseNode (Struct, Size, &Pos, Copy, &Used, 0) && Used == Pos - Start;
 
-  // The Tail behind the Root (FDT_END) is Untouched.
   if (Ok) {
     CopyMem (Struct + Start, Copy, Used);
   }
@@ -518,7 +467,6 @@ DtboMergeForRevision (
     goto Exit;
   }
 
-  // Pick the first Base DTB that covers this Revision.
   for (Index = 0; Index < Dt.Count; Index++) {
     CONST DT_TABLE_ENTRY *Entry = DtTableEntry (&Dt, Index);
 
@@ -535,7 +483,6 @@ DtboMergeForRevision (
     goto Exit;
   }
 
-  // Worst Case Room: Base + every matching Overlay + Slack.
   Room = SwapBytes32 (BaseEntry->DtSize) + DT_MERGE_SLACK;
 
   for (Index = 0; Index < Dtbo.Count; Index++) {
@@ -558,7 +505,6 @@ DtboMergeForRevision (
 
   FB_INFO ("base: dt entry %u (%u bytes)", BaseIndex, BaseSize);
 
-  // Let libfdt Grow the Blob into the Spare Room. It Sets TotalSize to the Buffer Size.
   FdtStatus = FdtOpenInto (Work, Work, EFI_PAGES_TO_SIZE (WorkPages));
   if (FdtStatus < 0) {
     DEBUG ((EFI_D_ERROR, "DtboMerge: FdtOpenInto: %a\n", FdtStrerror (FdtStatus)));
@@ -573,14 +519,12 @@ DtboMergeForRevision (
       continue;
     }
 
-    // The Overlay gets Modified by FdtOverlayApply, so it needs its own Aligned Copy.
     Status = DtEntryCopy (&Dtbo, Entry, 0, &Overlay, &OverlayPages, &OverlaySize);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "DtboMerge: Bad Overlay %u: %r\n", Index, Status));
       goto Exit;
     }
 
-    // Pre-Reverse the Overlay, FdtOverlayApply's Insertion Reverses it Back.
     Status = DtReverseChildren (Overlay);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "DtboMerge: Overlay %u: Child Reorder failed: %r\n", Index, Status));

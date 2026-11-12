@@ -22,6 +22,6 @@ FbGetVar (
   );
 
 VOID
-FbSendAllVars (IN BOOLEAN IncludePartitions);
+FbSendAllVars (VOID);
 
 #endif // __FASTBOOT_VARS_H__
