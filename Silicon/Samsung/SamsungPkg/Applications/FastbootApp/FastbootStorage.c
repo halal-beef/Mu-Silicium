@@ -40,6 +40,7 @@ FbReadPartition (
   }
 
   Partition->BlockIo = BlockIo;
+  Partition->BaseOffset = 0;
   Partition->Size    = MultU64x32 (BlockIo->Media->LastBlock + 1, BlockIo->Media->BlockSize);
 
   if (EFI_ERROR (gBS->HandleProtocol (Handle, &gEfiEraseBlockProtocolGuid, (VOID **)&Partition->Erase))) {
@@ -66,8 +67,33 @@ FbFindPartition (
   }
 
   for (Index = 0; Index < Count; Index++) {
-    if (FbReadPartition (Handles[Index], PartName, sizeof (PartName), Partition) &&
-        AsciiStriCmp (PartName, Name) == 0) {
+    if (!FbReadPartition (Handles[Index], PartName, sizeof (PartName), Partition)) {
+      continue;
+    }
+
+    if (AsciiStriCmp (PartName, "boot") == 0 &&
+        (AsciiStriCmp (Name, "boot") == 0 || AsciiStriCmp (Name, "silicium") == 0)) {
+      if ((FB_BOOT_SPLIT_SIZE % Partition->BlockIo->Media->BlockSize) != 0) {
+        FreePool (Handles);
+        return EFI_UNSUPPORTED;
+      }
+
+      if (AsciiStriCmp (Name, "silicium") == 0) {
+        if (Partition->Size <= FB_BOOT_SPLIT_SIZE) {
+          continue;
+        }
+
+        Partition->Size = FB_BOOT_SPLIT_SIZE;
+      } else {
+        Partition->BaseOffset = FB_BOOT_SPLIT_SIZE;
+        Partition->Size -= FB_BOOT_SPLIT_SIZE;
+      }
+
+      FreePool (Handles);
+      return EFI_SUCCESS;
+    }
+
+    if (AsciiStriCmp (PartName, Name) == 0) {
       FreePool (Handles);
       return EFI_SUCCESS;
     }
@@ -97,7 +123,16 @@ FbEnumeratePartitions (
 
   for (Index = 0; Index < Count; Index++) {
     if (FbReadPartition (Handles[Index], PartName, sizeof (PartName), &Partition)) {
-      Callback (Context, PartName, Partition.Size);
+      if (AsciiStriCmp (PartName, "boot") == 0 &&
+          Partition.Size > FB_BOOT_SPLIT_SIZE &&
+          (FB_BOOT_SPLIT_SIZE % Partition.BlockIo->Media->BlockSize) == 0) {
+        Callback (Context, "silicium", FB_BOOT_SPLIT_SIZE);
+        Partition.BaseOffset = FB_BOOT_SPLIT_SIZE;
+        Partition.Size -= FB_BOOT_SPLIT_SIZE;
+        Callback (Context, "boot", Partition.Size);
+      } else {
+        Callback (Context, PartName, Partition.Size);
+      }
     }
   }
 
@@ -150,7 +185,8 @@ FbIoWrite (
     return EFI_INVALID_PARAMETER;
   }
 
-  if (Off + Size > Io->Partition->Size) {
+  if (Off + Size > Io->Partition->Size ||
+      Off > MAX_UINT64 - Io->Partition->BaseOffset) {
     return EFI_VOLUME_FULL;
   }
 
@@ -165,7 +201,7 @@ FbIoWrite (
       Src = Io->Bounce;
     }
 
-    Status = Io->Partition->BlockIo->WriteBlocks (Io->Partition->BlockIo, Media->MediaId, DivU64x32 (Off, Bs), Padded, (VOID *)Src);
+    Status = Io->Partition->BlockIo->WriteBlocks (Io->Partition->BlockIo, Media->MediaId, DivU64x32 (Io->Partition->BaseOffset + Off, Bs), Padded, (VOID *)Src);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "Fastboot: WriteBlocks failed at 0x%lx! Status = %r\n", Off, Status));
       return Status;
@@ -202,7 +238,8 @@ FbIoFill (
     return EFI_INVALID_PARAMETER;
   }
 
-  if (Off + Size > Io->Partition->Size) {
+  if (Off + Size > Io->Partition->Size ||
+      Off > MAX_UINT64 - Io->Partition->BaseOffset) {
     return EFI_VOLUME_FULL;
   }
 
@@ -213,7 +250,7 @@ FbIoFill (
   while (Size != 0) {
     Len = (Size > FB_IO_CHUNK) ? FB_IO_CHUNK : (UINTN)Size;
 
-    Status = Io->Partition->BlockIo->WriteBlocks (Io->Partition->BlockIo, Media->MediaId, DivU64x32 (Off, Bs), Len, Io->Bounce);
+    Status = Io->Partition->BlockIo->WriteBlocks (Io->Partition->BlockIo, Media->MediaId, DivU64x32 (Io->Partition->BaseOffset + Off, Bs), Len, Io->Bounce);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "Fastboot: WriteBlocks (fill) failed at 0x%lx! Status = %r\n", Off, Status));
       return Status;
@@ -372,7 +409,7 @@ FbErasePartition (
   Bs     = Partition->BlockIo->Media->BlockSize;
   Blocks = DivU64x32 (Partition->Size, Bs);
 
-  if (Partition->Erase != NULL &&
+  if (Partition->BaseOffset == 0 && Partition->Erase != NULL &&
       Partition->Erase->EraseLengthGranularity != 0 &&
       (Blocks % Partition->Erase->EraseLengthGranularity) == 0) {
     Status = Partition->Erase->EraseBlocks (Partition->Erase, Partition->BlockIo->Media->MediaId, 0, NULL, (UINTN)Partition->Size);
@@ -408,16 +445,21 @@ FbReadPartitionData (
 {
   EFI_BLOCK_IO_MEDIA *Media = Partition->BlockIo->Media;
   UINT32              Bs    = Media->BlockSize;
-  UINT64              First = DivU64x32 (Offset, Bs);
-  UINTN               Skew  = (UINTN)(Offset - MultU64x32 (First, Bs));
-  UINTN               Span  = ALIGN_VALUE (Skew + Length, Bs);
+  UINT64              First;
+  UINTN               Skew;
+  UINTN               Span;
   UINT8              *Bounce;
   EFI_STATUS          Status;
 
-  if (Length == 0 || Length > FB_IO_CHUNK || Offset + Length > Partition->Size) {
+  if (Length == 0 || Length > FB_IO_CHUNK || Partition->Size < Length ||
+      Offset > Partition->Size - Length ||
+      Offset > MAX_UINT64 - Partition->BaseOffset) {
     return EFI_INVALID_PARAMETER;
   }
 
+  First = DivU64x32 (Partition->BaseOffset + Offset, Bs);
+  Skew  = (UINTN)((Partition->BaseOffset + Offset) - MultU64x32 (First, Bs));
+  Span  = ALIGN_VALUE (Skew + Length, Bs);
   Bounce = AllocatePages (EFI_SIZE_TO_PAGES (Span));
   if (Bounce == NULL) {
     return EFI_OUT_OF_RESOURCES;

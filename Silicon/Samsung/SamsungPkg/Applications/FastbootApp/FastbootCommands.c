@@ -1,6 +1,7 @@
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
+#include <Library/MemoryAllocationLib.h>
 #include <Library/PcdLib.h>
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
@@ -337,12 +338,80 @@ CmdPoweroff (IN CONST CHAR8 *Arg)
   Reset (EfiResetShutdown);
 }
 
+VOID
+BootFromPartition (BOOLEAN InFastboot)
+{
+  FB_PARTITION      Partition;
+  BOOT_LINUX_CTX    Ctx;
+  CONST CHAR8      *Reason;
+  EFI_STATUS         Status;
+  UINT8             *Image;
+  UINT64             Done;
+  UINTN              Chunk;
+  UINTN              Pages;
+  UINTN              Seconds;
+  UINTN              Tick;
+  EFI_INPUT_KEY      Key;
+
+  if (!InFastboot) {
+    for (Seconds = 5; Seconds != 0; Seconds--) {
+      Print (L"  booting boot partition in %u seconds (press Volume Down to cancel)\n", (UINT32)Seconds);
+      for (Tick = 0; Tick < 10; Tick++) {
+        if (gST->ConIn != NULL &&
+            !EFI_ERROR (gST->ConIn->ReadKeyStroke (gST->ConIn, &Key)) &&
+            Key.ScanCode == SCAN_DOWN) {
+          Print (L"  automatic boot cancelled\n");
+          FB_OKAY ("");
+          return;
+        }
+
+        gBS->Stall (100000);
+      }
+    }
+  }
+
+  Status = FbFindPartition ("boot", &Partition);
+  if (EFI_ERROR (Status) || Partition.Size == 0 || Partition.Size > MAX_UINTN) {
+    FB_FAIL ("boot partition unavailable");
+    return;
+  }
+
+  Pages = EFI_SIZE_TO_PAGES ((UINTN)Partition.Size);
+  Image = AllocatePages (Pages);
+  if (Image == NULL) {
+    FB_FAIL ("not enough memory for boot partition");
+    return;
+  }
+
+  for (Done = 0; Done < Partition.Size; Done += Chunk) {
+    Chunk = (UINTN)((Partition.Size - Done > FB_IO_CHUNK) ?
+                    FB_IO_CHUNK : (Partition.Size - Done));
+    Status = FbReadPartitionData (&Partition, Done, Image + (UINTN)Done, Chunk);
+    if (EFI_ERROR (Status)) {
+      FreePages (Image, Pages);
+      FB_FAIL ("boot partition read failed (%r)", Status);
+      return;
+    }
+  }
+
+  Status = BootLinuxPrepare (Image, (UINTN)Partition.Size, &Ctx, &Reason);
+  FreePages (Image, Pages);
+  if (EFI_ERROR (Status)) {
+    FB_FAIL ("boot failed: %a (%r)", Reason, Status);
+    return;
+  }
+
+  FB_OKAY ("");
+  BootLinuxExecute (&Ctx);
+}
+
+
 STATIC
 VOID
 CmdContinue (IN CONST CHAR8 *Arg)
 {
+  BootFromPartition (TRUE);
   FB_OKAY ("");
-  gFb.Exit = TRUE;
 }
 
 STATIC
@@ -353,8 +422,15 @@ CmdBoot (IN CONST CHAR8 *Arg)
   CONST CHAR8    *Reason;
   EFI_STATUS      Status;
 
-  if (gFb.DownloadBuf == NULL || gFb.DownloadReceived != gFb.DownloadSize || gFb.DownloadSize == 0) {
+  if (gFb.DownloadBuf == NULL && gFb.DownloadSize == 0) {
     FB_FAIL ("no image downloaded");
+    return;
+  }
+
+  if (gFb.DownloadBuf == NULL ||
+      gFb.DownloadReceived != gFb.DownloadSize ||
+      gFb.DownloadSize == 0) {
+    FB_FAIL ("no complete image downloaded");
     return;
   }
 
