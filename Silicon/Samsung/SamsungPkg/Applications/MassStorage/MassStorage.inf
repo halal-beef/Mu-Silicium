@@ -1,0 +1,32 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = MassStorage
+  FILE_GUID                      = 2E5D8B31-6A47-4C09-9F82-D3170AE64B58
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = MassStorageEntry
+
+[Sources]
+  MassStorage.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MsGraphicsPkg/MsGraphicsPkg.dec
+  SiliciumPkg/SiliciumPkg.dec
+  SamsungPkg/SamsungPkg.dec
+
+[LibraryClasses]
+  DebugLib
+  DevicePathLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  UefiApplicationEntryPoint
+  BootGraphicsLib
+  UefiLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid
+  gExynosUsbMsdProtocolGuid
+  gEfiBlockIoProtocolGuid
+  gEfiDevicePathProtocolGuid

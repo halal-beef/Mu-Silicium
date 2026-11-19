@@ -1,0 +1,12 @@
+Clean-room implementation. Written against the public specifications listed below,
+not derived from any vendor source.
+
+SPECS:  USB Mass Storage Class - Bulk Only Transport, Revision 1.0 (USB-IF)
+          - Command/Status Wrapper layout, the Command/Data/Status loop,
+            valid CBW rules and the Reset Recovery sequence.
+        USB 2.0 Specification, Chapter 9 (USB-IF)
+          - Descriptors and standard device requests. UsbfnDwc3Dxe absorbs only
+            SET_ADDRESS, so everything else is handled here.
+        SCSI Primary Commands (SPC-3) and SCSI Block Commands (SBC-3), INCITS
+          - INQUIRY, REQUEST SENSE, READ CAPACITY, READ/WRITE (10) and (16),
+            MODE SENSE, REPORT LUNS, and the sense key / ASC values.

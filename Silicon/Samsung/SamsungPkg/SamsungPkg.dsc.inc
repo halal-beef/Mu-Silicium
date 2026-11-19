@@ -57,6 +57,7 @@
   # BDS Libraries
   #
   ErrataPatchesLib|SamsungPkg/Library/ErrataPatchesLib/ErrataPatchesLib.inf
+  PlatformBootOptionsLib|SamsungPkg/Library/PlatformBootOptionsLib/PlatformBootOptionsLib.inf
 
 [Components]
   #
@@ -82,6 +83,7 @@
   # USB Drivers
   #
   SamsungPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
+  SamsungPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
 
   #
   # RNG Drivers
@@ -98,3 +100,8 @@
   # Custom Drivers
   #
   SamsungPkg/Drivers/HypLoaderDxe/HypLoaderDxe.inf
+
+  #
+  # Applications
+  #
+  SamsungPkg/Applications/MassStorage/MassStorage.inf
