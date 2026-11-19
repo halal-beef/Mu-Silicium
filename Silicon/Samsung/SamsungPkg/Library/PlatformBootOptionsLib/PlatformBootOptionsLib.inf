@@ -1,0 +1,23 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = PlatformBootOptionsLib
+  FILE_GUID                      = B4E27C0A-8F16-4D93-A5C8-71EB3F02D96B
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = PlatformBootOptionsLib|DXE_DRIVER
+
+[Sources]
+  PlatformBootOptions.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  SiliciumPkg/SiliciumPkg.dec
+  SamsungPkg/SamsungPkg.dec
+
+[LibraryClasses]
+  DebugLib
+  MemoryAllocationLib
+  PcdLib
+
+[FixedPcd]
+  gSamsungPkgTokenSpaceGuid.PcdMassStorageFile
