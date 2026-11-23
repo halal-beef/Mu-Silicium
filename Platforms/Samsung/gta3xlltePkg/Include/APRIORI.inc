@@ -17,6 +17,8 @@ APRIORI DXE {
   INF SamsungPkg/Drivers/SpeedyDxe/SpeedyDxe.inf
   INF SamsungPkg/Drivers/PmicDxe/PmicDxe.inf
 
+  INF S5E7885Pkg/Drivers/DeconDxe/DeconDxe.inf
+
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
   INF MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
 

@@ -68,6 +68,11 @@
 
 [Components]
   #
+  # Display handoff
+  #
+  S5E7885Pkg/Drivers/DeconDxe/DeconDxe.inf
+
+  #
   # ACPI Tables
   #
   gta3xllte/AcpiTables.inf

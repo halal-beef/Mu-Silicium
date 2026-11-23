@@ -1,0 +1,42 @@
+## @file
+#  S5E7885 DECON/DSIM framebuffer handoff driver.
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = DeconDxe
+  FILE_GUID                      = 6D2D99B7-2E33-4D59-A615-F30A42C68C7E
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = DeconDxeEntry
+
+[Sources]
+  DeconDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  SiliciumPkg/SiliciumPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  IoLib
+  MemoryMapHelperLib
+  PcdLib
+  TimerLib
+  UefiDriverEntryPoint
+
+[Pcd]
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferWidth
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferHeight
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferColorDepth
+
+[Protocols]
+  gEfiCpuArchProtocolGuid
+
+[Depex]
+  gEfiCpuArchProtocolGuid
