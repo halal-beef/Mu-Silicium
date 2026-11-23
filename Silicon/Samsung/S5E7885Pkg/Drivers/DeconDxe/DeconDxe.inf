@@ -1,7 +1,10 @@
 ## @file
-#  S5E7885 DECON/DSIM framebuffer handoff driver.
+#  S5E7885 DECON/DSIM display driver (full panel bring-up, HX8279D).
 #
 #  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+#  Register programming derived from the Samsung SM-T515 downstream kernel
+#  (GPL-2.0); see the headers of the individual files.
 ##
 
 [Defines]
@@ -14,6 +17,16 @@
 
 [Sources]
   DeconDxe.c
+  S5E7885Display.h
+  Decon/Decon.c
+  Dsim/Dsim.c
+  Dsim/DsimPhyTable.h
+  Panel/Hx8279d.c
+  Panel/Hx8279dParam.h
+  Platform/Platform.c
+  Regs/RegsDecon.h
+  Regs/RegsDpp.h
+  Regs/RegsDsim.h
 
 [Packages]
   MdePkg/MdePkg.dec
