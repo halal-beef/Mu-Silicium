@@ -452,8 +452,34 @@ MshcBoardPowerCycle (IN OUT MSHC_HOST *Host)
 VOID
 MshcBoardPostReset (IN OUT MSHC_HOST *Host)
 {
+  UINT32 Ctrl;
+
   MmioOr32 (Host->BaseAddress + MSHCI_FORCE_CLK_STOP, MMC_HWACG_CONTROL);
   MmioOr32 (Host->BaseAddress + MSHCI_BLOCK_DMA_FOR_CI, BLOCK_DMA_NO_EXT_TIMEOUT);
+
+  if (Host->ControllerId != MSHC_CTRL_EMMC) {
+    return;
+  }
+
+  //
+  // S-Boot used to open the eMMC SMU for us. Without it only the first burst
+  // of a data transfer gets through (TBBCNT stays at 0x10 while the card has
+  // sent everything). This is exynos_mmc_smu_entry0_init() from the kernel:
+  // one entry covering all LBAs and LUNs, every access type allowed.
+  //
+  MmioWrite32 (Host->BaseAddress + MSHC_SMU_MPSBEGIN0, 0);
+  MmioWrite32 (Host->BaseAddress + MSHC_SMU_MPSEND0, 0xFFFFFFFF);
+  MmioWrite32 (Host->BaseAddress + MSHC_SMU_MPSLUN0, 0xFF);
+  MmioWrite32 (Host->BaseAddress + MSHC_SMU_MPSCTRL0, MSHC_SMU_CTRL_BYPASS);
+
+  Ctrl = MmioRead32 (Host->BaseAddress + MSHC_SMU_MPSCTRL0);
+  if (Ctrl != MSHC_SMU_CTRL_BYPASS) {
+    DEBUG ((EFI_D_ERROR,
+            "%a: SMU entry 0 did not take (MPSCTRL0 = 0x%08X), it may be secure-only.\n",
+            __FUNCTION__, Ctrl));
+  } else {
+    DEBUG ((EFI_D_INFO, "%a: SMU entry 0 set to bypass.\n", __FUNCTION__));
+  }
 }
 
 BOOLEAN

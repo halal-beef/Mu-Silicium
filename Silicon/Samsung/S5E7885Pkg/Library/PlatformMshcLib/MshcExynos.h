@@ -31,4 +31,24 @@
 #define MMC_HWACG_CONTROL        BIT4
 #define BLOCK_DMA_NO_EXT_TIMEOUT BIT29
 
+//
+// eMMC-only access control (SMU / "EMMCP" block at controller base + 0x1000).
+// Entry 0 decides which LBA range / LUN the host is allowed to move data for;
+// without a valid entry the data path stalls after the first burst.
+//
+#define MSHC_SMU_BASE            (0x1000)
+#define MSHC_SMU_MPSBEGIN0       (MSHC_SMU_BASE + 0x200)
+#define MSHC_SMU_MPSEND0         (MSHC_SMU_BASE + 0x204)
+#define MSHC_SMU_MPSLUN0         (MSHC_SMU_BASE + 0x208)
+#define MSHC_SMU_MPSCTRL0        (MSHC_SMU_BASE + 0x20C)
+
+#define MSHC_SMU_CTRL_VALID      BIT0
+#define MSHC_SMU_CTRL_NS_WRITE   BIT4
+#define MSHC_SMU_CTRL_NS_READ    BIT5
+#define MSHC_SMU_CTRL_S_WRITE    BIT6
+#define MSHC_SMU_CTRL_S_READ     BIT7
+#define MSHC_SMU_CTRL_BYPASS     (MSHC_SMU_CTRL_S_READ | MSHC_SMU_CTRL_S_WRITE | \
+                                  MSHC_SMU_CTRL_NS_READ | MSHC_SMU_CTRL_NS_WRITE | \
+                                  MSHC_SMU_CTRL_VALID)
+
 #endif /* _MSHC_EXYNOS_H_ */
