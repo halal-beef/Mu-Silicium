@@ -75,24 +75,24 @@ HypLoaderEntry (
   IN EFI_HANDLE        ImageHandle,
   IN EFI_SYSTEM_TABLE *SystemTable)
 {
-  //EFI_STATUS           Status;
-  //EFI_PHYSICAL_ADDRESS HypBase;
-  //UINTN                HypLength;
+  EFI_STATUS           Status;
+  EFI_PHYSICAL_ADDRESS HypBase;
+  UINTN                HypLength;
 
   DEBUG ((EFI_D_WARN, "HypLoader: Skip load!\n"));
 
   // Load Hypervisor
-  //Status = LoadHyp (&HypBase, &HypLength);
-  //if (EFI_ERROR (Status)) {
-  //  return Status;
-  //}
-//
-  //// Start Hypervisor
-  //Status = StartHyp (HypBase);
-  //if (EFI_ERROR (Status)) {
-  //  // Free Memory
-  //  gBS->FreePages (HypBase, HypLength);
-  //}
+  Status = LoadHyp (&HypBase, &HypLength);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Start Hypervisor
+  Status = StartHyp (HypBase);
+  if (EFI_ERROR (Status)) {
+    // Free Memory
+    gBS->FreePages (HypBase, HypLength);
+  }
 
   return EFI_SUCCESS;
 }
