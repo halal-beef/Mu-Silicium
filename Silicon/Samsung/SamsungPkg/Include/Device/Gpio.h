@@ -59,6 +59,10 @@ typedef enum {
   FUNCTION_2,
   FUNCTION_3,
 
+  // Pin mux selector is a 4-bit field; 0xF routes the pin to the external
+  // interrupt block (EXYNOS_PIN_FUNC_F / EINT), used e.g. for the keys
+  FUNCTION_EINT = 0xF,
+
   FUNCTION_MAX
 } EFI_GPIO_FUNCTION;
 

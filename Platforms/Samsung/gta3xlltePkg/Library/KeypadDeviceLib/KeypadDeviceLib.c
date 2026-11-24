@@ -188,6 +188,35 @@ KeypadInitializeKeyContextPrivate (KEY_CONTEXT_PRIVATE *Context)
   Context->Pin        = 0;
 }
 
+//
+// Pin setup from the downstream DT (key_volup / key_voldown / key_power):
+//   samsung,pin-function = <EXYNOS_PIN_FUNC_F>;      -> FUNCTION_EINT (0xF)
+//   samsung,pin-pud      = <EXYNOS_PIN_PULL_NONE>;   -> PULL_NONE
+//   samsung,pin-drv      = <EXYNOS5420_PIN_DRV_LV1>; -> DRIVE_1X (0)
+// S-Boot used to do this before handing over; as the first stage we must.
+//
+STATIC
+VOID
+KeypadConfigurePin (KEY_CONTEXT_PRIVATE *Context)
+{
+  EFI_STATUS Status;
+
+  Status = mGpioProtocol->SetFunction (Context->BankId, Context->BankNumber, Context->Pin, FUNCTION_EINT);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "%a: SetFunction(%u/%u) failed! Status = %r\n", __FUNCTION__, Context->BankNumber, Context->Pin, Status));
+  }
+
+  Status = mGpioProtocol->SetPull (Context->BankId, Context->BankNumber, Context->Pin, PULL_NONE);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "%a: SetPull(%u/%u) failed! Status = %r\n", __FUNCTION__, Context->BankNumber, Context->Pin, Status));
+  }
+
+  Status = mGpioProtocol->SetDrive (Context->BankId, Context->BankNumber, Context->Pin, DRIVE_1X);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "%a: SetDrive(%u/%u) failed! Status = %r\n", __FUNCTION__, Context->BankNumber, Context->Pin, Status));
+  }
+}
+
 STATIC
 KEY_CONTEXT_PRIVATE*
 KeypadKeyCodeToKeyContext (UINT32 KeyCode)
@@ -237,6 +266,11 @@ KeypadDeviceConstructor ()
     StaticContext->BankNumber = 1;
     StaticContext->BankId     = BANK_ID_A;
     StaticContext->Pin        = 0x7;
+
+    // Mux, pull and drive the three key pins
+    for (Index = 0; Index < (sizeof(KeyList) / sizeof(KeyList[0])); Index++) {
+      KeypadConfigurePin (KeyList[Index]);
+    }
   } else {
     DEBUG ((EFI_D_ERROR, "%a: Failed to Locate GPIO Protocol! Status = %r\n", __FUNCTION__, Status));
   }
